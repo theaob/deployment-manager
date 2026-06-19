@@ -1,0 +1,34 @@
+{
+  "clusters": [
+    {
+      "id": "cluster-alpha",
+      "name": "Alpha Cluster",
+      "environment": "staging",
+      "deployments": [
+        { "id": "alpha-deploy-1", "name": "frontend-app" },
+        { "id": "alpha-deploy-2", "name": "backend-api" },
+        { "id": "alpha-deploy-3", "name": "worker-service" }
+      ]
+    },
+    {
+      "id": "cluster-beta",
+      "name": "Beta Cluster",
+      "environment": "production",
+      "deployments": [
+        { "id": "beta-deploy-1", "name": "frontend-app" },
+        { "id": "beta-deploy-2", "name": "backend-api" }
+      ]
+    },
+    {
+      "id": "cluster-gamma",
+      "name": "Gamma Cluster",
+      "environment": "development",
+      "deployments": [
+        { "id": "gamma-deploy-1", "name": "frontend-app" },
+        { "id": "gamma-deploy-2", "name": "backend-api" },
+        { "id": "gamma-deploy-3", "name": "worker-service" },
+        { "id": "gamma-deploy-4", "name": "database-proxy" }
+      ]
+    }
+  ]
+}
