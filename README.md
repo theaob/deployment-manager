@@ -1,1 +1,154 @@
-# deployment-manager
+# Deployment Manager
+
+A lightweight, self-hosted deployment reservation system for engineering teams. Allows users to "book" deployments for testing or work, ensuring no two people use the same one simultaneously.
+
+## Features
+
+- **Lightweight**: Built with Node.js and SQLite - no heavy database required.
+- **Simple Authentication**: Log in with your name; first user becomes admin.
+- **Cluster Management**: Define clusters and the deployments within them.
+- **Reservation System**:
+  - Users can reserve any deployment.
+  - Reservations are time-stamped and visible in history.
+  - Admins can see all reservations across all deployments.
+  - Users can see their own history.
+- **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
+
+## Prerequisites
+
+- Node.js 16 or higher.
+- (Optional) Docker for running in a container.
+
+## Setup
+
+1.  **Clone the repository** (or download the code).
+2.  **Install dependencies**:
+    ```bash
+    cd deployment-manager
+    npm install
+    ```
+
+3.  **Configure your clusters** (Optional):
+    If you don't want to use the default configuration, create or edit `config/clusters.json`. The file should be in this format:
+
+    ```json
+    {
+      "clusters": [
+        {
+          "id": "k8s-preprod-euw1",
+          "name": "Preprod EUW1",
+          "environment": "preprod",
+          "deployments": [
+            {
+              "id": "deploy-api-123",
+              "name": "API-123 (Preprod)"
+            },
+            {
+              "id": "deploy-admin-123",
+              "name": "Admin-123 (Preprod)"
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+    The `id` fields are used internally by the system.
+
+4.  **Run the server**:
+    ```bash
+    npm start
+    ```
+    The server will start on `http://localhost:3000`.
+
+### Docker
+
+To run in Docker:
+
+```bash
+docker build -t deployment-manager .
+docker run -p 3000:3000 --name dm deployment-manager
+```
+
+## Usage
+
+### Logging In
+
+1.  Open `http://localhost:3000`.
+2.  Enter your name in the login box and click "Log in".
+3.  The first user to log in automatically becomes an admin.
+
+### The Dashboard
+
+- **Current Reservations**: A table showing who has which deployment reserved and when it expires.
+- **Available Deployments**: A list of all deployments. Click "Reserve" to book one.
+- **My Reservations**: A tab showing only the reservations you have made.
+
+### Admin Features
+
+Admins have access to an "Admin" section:
+
+- **Users**: View all users and change their roles between `user` and `admin`.
+- **History**: A complete audit log of all reservations ever made, filterable by deployment or user.
+- **Cluster Management**: Add or remove clusters and deployments manually.
+
+## API Reference
+
+All endpoints require authentication (via the JWT token in local storage).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/login` | Logs in or registers a user. Returns a token. |
+| `GET` | `/api/auth/me` | Gets current user info. |
+| `GET` | `/api/clusters` | Gets all clusters and deployments. |
+| `POST` | `/api/reservations` | Creates a reservation. |
+| `DELETE` | `/api/reservations/:id` | Releases a reservation. |
+| `GET` | `/api/reservations/mine` | Gets reservations for the current user. |
+| `GET` | `/api/reservations/active` | Gets all currently active reservations. |
+| `GET` | `/api/history` | Gets full reservation history (Admin). |
+| `POST` | `/api/admin/clusters` | Creates a new cluster (Admin). |
+| `PUT` | `/api/admin/clusters/:id` | Updates a cluster (Admin). |
+| `DELETE` | `/api/admin/clusters/:id` | Deletes a cluster and its deployments (Admin). |
+| `POST` | `/api/admin/clusters/:id/deployments` | Adds a deployment to a cluster (Admin). |
+| `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (Admin). |
+| `GET` | `/api/admin/users` | Lists all users (Admin). |
+| `PUT` | `/api/admin/users/:id/role` | Changes a user's role (Admin). |
+
+## Releasing
+
+Docker images are published to DockerHub automatically via GitHub Actions whenever a version tag is pushed.
+
+### Setup (one-time)
+
+Add these secrets to your GitHub repository under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `DOCKERHUB_USERNAME` | Your DockerHub username |
+| `DOCKERHUB_TOKEN` | A DockerHub [access token](https://hub.docker.com/settings/security) |
+
+### Creating a release
+
+```bash
+# Tag the commit with a version
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This will automatically build and push two Docker images:
+
+- `<your-dockerhub-user>/deployment-manager:1.0.0`
+- `<your-dockerhub-user>/deployment-manager:latest`
+
+### Pulling a release
+
+```bash
+docker pull <your-dockerhub-user>/deployment-manager:latest
+docker run -d -p 3000:3000 -v dm-data:/app/data <your-dockerhub-user>/deployment-manager:latest
+```
+
+> **Note:** The `-v dm-data:/app/data` flag persists the SQLite database across container restarts.
+
+## License
+
+MIT
