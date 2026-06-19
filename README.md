@@ -129,13 +129,11 @@ Add these secrets to your GitHub repository under **Settings → Secrets and var
 
 ### Creating a release
 
-```bash
-# Tag the commit with a version
-git tag v1.0.0
-git push origin v1.0.0
-```
+1. Go to **Releases → Draft a new release** on GitHub.
+2. Create a new tag (e.g. `v1.0.0`) and fill in the release notes.
+3. Click **Publish release**.
 
-This will automatically build and push two Docker images:
+The workflow will automatically build and push two Docker images:
 
 - `<your-dockerhub-user>/deployment-manager:1.0.0`
 - `<your-dockerhub-user>/deployment-manager:latest`
