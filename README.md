@@ -6,6 +6,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 
 - **Lightweight**: Built with Node.js and SQLite - no heavy database required.
 - **Simple Authentication**: Log in with your name; first user becomes admin.
+- **Active Directory Support**: Optionally authenticate users against an AD/LDAP server.
 - **Cluster Management**: Define clusters and the deployments within them.
 - **Reservation System**:
   - Users can reserve any deployment.
@@ -69,6 +70,43 @@ To run in Docker:
 docker build -t deployment-manager .
 docker run -p 3000:3000 --name dm deployment-manager
 ```
+
+### Active Directory Authentication
+
+By default, the app uses a simple username-based login (no password). To enable Active Directory authentication, set the following environment variables:
+
+| Variable | Required | Example | Description |
+|----------|----------|---------|-------------|
+| `AD_URL` | Yes | `ldap://10.0.1.50:389` | LDAP/AD server URL. Use `ldaps://` for TLS. |
+| `AD_DOMAIN` | Yes | `CORP` | NetBIOS domain name (prepended as `CORP\username`). |
+| `AD_BASE_DN` | No | `DC=corp,DC=local` | Base DN for user searches (reserved for future use). |
+| `AD_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to accept self-signed TLS certs. |
+
+**Example** (native):
+```bash
+AD_URL=ldap://10.0.1.50:389 AD_DOMAIN=CORP npm start
+```
+
+**Example** (Docker):
+```bash
+docker run -p 3000:3000 \
+  -e AD_URL=ldaps://ad.corp.local:636 \
+  -e AD_DOMAIN=CORP \
+  --name dm deployment-manager
+```
+
+**Example** (Kubernetes):
+```yaml
+env:
+  - name: AD_URL
+    value: "ldap://ad-server.corp.svc.cluster.local:389"
+  - name: AD_DOMAIN
+    value: "CORP"
+```
+
+When `AD_URL` is set, the login page will show both a username and password field. Users authenticate against the AD server via LDAP bind. When `AD_URL` is not set, the app falls back to the original username-only login (useful for local development).
+
+> **Security note:** When using `ldap://` (unencrypted), passwords are sent in plaintext to the LDAP server. Use `ldaps://` in production, or ensure the connection is over a trusted private network.
 
 ## Usage
 

@@ -15,7 +15,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Auth middleware for API routes
 app.use('/api', (req, res, next) => {
-  if (req.path === '/auth/login') {
+  if (req.path === '/auth/login' || req.path === '/auth/mode') {
     return next();
   }
   authMiddleware(req, res, next);

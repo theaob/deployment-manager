@@ -3,16 +3,28 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { JWT_SECRET } = require('../middleware/auth');
+const { isAdEnabled, authenticateWithLDAP } = require('../middleware/ldap-auth');
 
 const router = express.Router();
 
 /**
- * POST /api/auth/login
- * Logs in (or registers) a user by username.
- * Body: { username: string }
+ * GET /api/auth/mode
+ * Returns the current authentication mode so the frontend knows
+ * whether to show a password field.
  */
-router.post('/login', (req, res) => {
-  const { username } = req.body;
+router.get('/mode', (req, res) => {
+  res.json({ mode: isAdEnabled() ? 'ad' : 'local' });
+});
+
+/**
+ * POST /api/auth/login
+ * Logs in (or registers) a user.
+ *
+ * Local mode:  Body: { username: string }
+ * AD mode:     Body: { username: string, password: string }
+ */
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
 
   if (!username || typeof username !== 'string' || username.trim().length === 0) {
     return res.status(400).json({ error: 'Username is required' });
@@ -21,7 +33,19 @@ router.post('/login', (req, res) => {
   const cleanUsername = username.trim().toLowerCase();
   const displayName = username.trim();
 
-  // Check if user exists
+  // --- AD mode: validate credentials via LDAP bind ---
+  if (isAdEnabled()) {
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required for Active Directory login' });
+    }
+
+    const result = await authenticateWithLDAP(cleanUsername, password);
+    if (!result.success) {
+      return res.status(401).json({ error: result.error });
+    }
+  }
+
+  // --- Lookup or auto-register user ---
   let user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
 
   if (!user) {
@@ -37,7 +61,7 @@ router.post('/login', (req, res) => {
     user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   }
 
-  // Generate JWT token
+  // --- Generate JWT token ---
   const token = jwt.sign(
     { id: user.id, username: user.username, display_name: user.display_name, role: user.role },
     JWT_SECRET,
