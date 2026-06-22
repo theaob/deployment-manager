@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  deployment-manager:
+    build: .
+    image: deployment-manager:latest
+    container_name: deployment-manager
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # Common settings
+      - PORT=3000
+      - NODE_ENV=production
+      - JWT_SECRET=change-this-to-a-secure-random-key-in-production
+
+      # ----------------------------------------------------
+      # OPTION 1: Active Directory LDAP Bind Authentication
+      # ----------------------------------------------------
+      # - AD_URL: ldap://your-ad-server:389 or ldaps://your-ad-server:636
+      # - AD_DOMAIN: NetBIOS domain name (e.g., CORP)
+      # - AD_TLS_REJECT_UNAUTHORIZED: Set to 'false' if using self-signed certs with ldaps://
+      # ----------------------------------------------------
+      # - AD_URL=ldaps://ad.corp.local:636
+      # - AD_DOMAIN=CORP
+      # - AD_TLS_REJECT_UNAUTHORIZED=true
+
+      # ----------------------------------------------------
+      # OPTION 2: Trusted Header Single Sign-On (SSO)
+      # ----------------------------------------------------
+      # - SSO_HEADER: Name of the header containing the authenticated user's name
+      #   (injected by reverse proxies like OAuth2 Proxy, Authelia, or Nginx)
+      # ----------------------------------------------------
+      # - SSO_HEADER=X-Remote-User
+
+      # ----------------------------------------------------
+      # OPTION 3: Keycloak / OpenID Connect (OIDC) SSO
+      # ----------------------------------------------------
+      # - OIDC_ISSUER: The base Keycloak realm URL (discovers configuration automatically)
+      # - OIDC_CLIENT_ID: Registered client ID (default: deployment-manager)
+      # - OIDC_CLIENT_SECRET: Client Secret (optional, only for confidential clients)
+      # - OIDC_REDIRECT_URI: Registered callback endpoint URL
+      # ----------------------------------------------------
+      # - OIDC_ISSUER=http://localhost:8080/realms/myrealm
+      # - OIDC_CLIENT_ID=deployment-manager
+      # - OIDC_REDIRECT_URI=http://localhost:3000/api/auth/oidc/callback
+      # - OIDC_CLIENT_SECRET=your-client-secret (optional)
+
+    restart: unless-stopped

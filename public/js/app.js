@@ -32,7 +32,30 @@ const App = {
   /** Route based on hash */
   route() {
     const hash = window.location.hash.slice(1) || '';
-    const [view] = hash.split('/');
+    const [pathAndQuery] = hash.split('/');
+    const [view, queryString] = pathAndQuery.split('?');
+
+    // Intercept SSO callback
+    if (view === 'sso-callback') {
+      const params = new URLSearchParams(queryString || '');
+      const token = params.get('token');
+      const userStr = params.get('user');
+      if (token && userStr) {
+        try {
+          const user = JSON.parse(decodeURIComponent(userStr));
+          this.setAuth(token, user);
+          this.showToast(`Welcome, ${user.display_name}!`, 'success');
+          window.location.hash = '#dashboard';
+          return;
+        } catch (err) {
+          this.showToast('SSO callback failed: Invalid user data.', 'error');
+        }
+      } else {
+        this.showToast('SSO callback failed: Missing token or user info.', 'error');
+      }
+      window.location.hash = '#login';
+      return;
+    }
 
     // Cleanup previous view
     if (this.currentView?.destroy) {

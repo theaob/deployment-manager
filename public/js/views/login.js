@@ -103,6 +103,25 @@ const LoginView = {
       return;
     }
 
+    if (this.authMode === 'oidc') {
+      loading.style.display = 'none';
+      const card = document.querySelector('.login-card');
+      const oidcDiv = document.createElement('div');
+      oidcDiv.id = 'oidc-container';
+      oidcDiv.style.textAlign = 'center';
+      oidcDiv.style.padding = '12px 0';
+      oidcDiv.innerHTML = `
+        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+          Sign in securely using your Keycloak credentials.
+        </p>
+        <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          🔑 Sign In with Keycloak
+        </a>
+      `;
+      card.appendChild(oidcDiv);
+      return;
+    }
+
     if (this.authMode === 'ad') {
       usernameInput.placeholder = 'Enter your Active Directory username';
       passwordGroup.style.display = '';

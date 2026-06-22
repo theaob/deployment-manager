@@ -3,19 +3,27 @@ const cors = require('cors');
 const path = require('path');
 const { authMiddleware } = require('./middleware/auth');
 
+const cookieParser = require('cookie-parser');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Auth middleware for API routes
 app.use('/api', (req, res, next) => {
-  if (req.path === '/auth/login' || req.path === '/auth/mode') {
+  if (
+    req.path === '/auth/login' ||
+    req.path === '/auth/mode' ||
+    req.path === '/auth/oidc/login' ||
+    req.path === '/auth/oidc/callback'
+  ) {
     return next();
   }
   authMiddleware(req, res, next);

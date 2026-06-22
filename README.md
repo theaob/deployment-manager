@@ -132,6 +132,34 @@ When `SSO_HEADER` is set, the application will automatically sign in users using
 > 1. Clients cannot access the application container directly (e.g. configure network firewalls/Kubernetes Network Policies to block external traffic and only accept connections from your reverse proxy).
 > 2. The reverse proxy is configured to strip/sanitize the `SSO_HEADER` from all incoming client requests *before* adding its own verified header.
 
+### Keycloak / OpenID Connect (OIDC) SSO
+
+You can offload authentication to a Keycloak realm or any OpenID Connect (OIDC) identity provider. When OIDC is configured, the login screen displays a "Sign In with Keycloak" button which redirects the user to your realm login page.
+
+To enable OIDC, set the following environment variables:
+
+| Variable | Required | Example | Description |
+|----------|----------|---------|-------------|
+| `OIDC_ISSUER` | Yes | `http://localhost:8080/realms/myrealm` | The base URL of the Keycloak/OIDC realm. Enables OIDC mode. |
+| `OIDC_CLIENT_ID` | Yes | `deployment-manager` | The Client ID configured in Keycloak. |
+| `OIDC_REDIRECT_URI` | Yes | `http://localhost:3000/api/auth/oidc/callback` | The callback URL registered in Keycloak. |
+| `OIDC_CLIENT_SECRET` | No | `your-client-secret` | The Client Secret. Only required for confidential clients; omit for public clients. |
+
+#### Keycloak Client Configuration:
+1. Create a client with ID `deployment-manager` (or matching `OIDC_CLIENT_ID`).
+2. Set **Access Type / Client Authentication** to `public` (recommended if you don't have realm admin rights to obtain client secrets) or `confidential`.
+3. Enable **Standard Flow** (Authorization Code flow).
+4. Add `http://localhost:3000/api/auth/oidc/callback` (or your production callback URL) to the **Valid Redirect URIs** list.
+
+**Example** (Docker):
+```bash
+docker run -p 3000:3000 \
+  -e OIDC_ISSUER=https://keycloak.example.com/realms/myrealm \
+  -e OIDC_CLIENT_ID=deployment-manager \
+  -e OIDC_REDIRECT_URI=https://deploy.example.com/api/auth/oidc/callback \
+  --name dm deployment-manager
+```
+
 ## Usage
 
 ### Logging In
