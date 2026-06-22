@@ -72,6 +72,37 @@ const LoginView = {
     }
 
     // Configure the form based on auth mode
+    if (this.authMode === 'sso') {
+      loading.querySelector('p').textContent = 'Signing in automatically via SSO…';
+      try {
+        const data = await App.api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({}),
+          noAuth: true,
+        });
+
+        App.setAuth(data.token, data.user);
+        App.showToast(`Welcome, ${data.user.display_name}!`, 'success');
+        App.navigate('dashboard');
+      } catch (err) {
+        loading.style.display = 'none';
+        const card = document.querySelector('.login-card');
+        const errDiv = document.createElement('div');
+        errDiv.id = 'sso-error-container';
+        errDiv.style.textAlign = 'center';
+        errDiv.innerHTML = `
+          <div style="color: #ef4444; margin-bottom: 20px;">
+            <div style="font-size: 40px; margin-bottom: 8px;">⚠️</div>
+            <h3 style="margin-bottom: 6px;">SSO Sign-in Failed</h3>
+            <p style="font-size: 13px; color: var(--text-muted);">${App.escapeHtml(err.message)}</p>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="window.location.reload()">Retry Sign-in</button>
+        `;
+        card.appendChild(errDiv);
+      }
+      return;
+    }
+
     if (this.authMode === 'ad') {
       usernameInput.placeholder = 'Enter your Active Directory username';
       passwordGroup.style.display = '';

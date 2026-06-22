@@ -10,9 +10,12 @@ const router = express.Router();
 /**
  * GET /api/auth/mode
  * Returns the current authentication mode so the frontend knows
- * whether to show a password field.
+ * whether to show a password field or auto-login.
  */
 router.get('/mode', (req, res) => {
+  if (process.env.SSO_HEADER) {
+    return res.json({ mode: 'sso' });
+  }
   res.json({ mode: isAdEnabled() ? 'ad' : 'local' });
 });
 
@@ -20,21 +23,36 @@ router.get('/mode', (req, res) => {
  * POST /api/auth/login
  * Logs in (or registers) a user.
  *
+ * SSO mode:    Reads username from the proxy-injected HTTP header specified by SSO_HEADER.
  * Local mode:  Body: { username: string }
  * AD mode:     Body: { username: string, password: string }
  */
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  let username = req.body.username;
+  const password = req.body.password;
+  const ssoHeaderName = process.env.SSO_HEADER;
 
-  if (!username || typeof username !== 'string' || username.trim().length === 0) {
-    return res.status(400).json({ error: 'Username is required' });
+  if (ssoHeaderName) {
+    // Header keys are lowercased by Express/Node
+    const ssoUser = req.headers[ssoHeaderName.toLowerCase()];
+    if (!ssoUser || typeof ssoUser !== 'string' || ssoUser.trim().length === 0) {
+      return res.status(401).json({
+        error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
+      });
+    }
+    username = ssoUser;
+  } else {
+    // Standard login validation
+    if (!username || typeof username !== 'string' || username.trim().length === 0) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
   }
 
   const cleanUsername = username.trim().toLowerCase();
   const displayName = username.trim();
 
-  // --- AD mode: validate credentials via LDAP bind ---
-  if (isAdEnabled()) {
+  // --- AD mode (non-SSO): validate credentials via LDAP bind ---
+  if (!ssoHeaderName && isAdEnabled()) {
     if (!password) {
       return res.status(400).json({ error: 'Password is required for Active Directory login' });
     }

@@ -108,6 +108,30 @@ When `AD_URL` is set, the login page will show both a username and password fiel
 
 > **Security note:** When using `ldap://` (unencrypted), passwords are sent in plaintext to the LDAP server. Use `ldaps://` in production, or ensure the connection is over a trusted private network.
 
+### Trusted Header SSO (Single Sign-On)
+
+For zero-interaction automated login, you can place the application behind a reverse proxy or Ingress gateway (such as OAuth2 Proxy, Authelia, or Nginx configured with GSSAPI/SPNEGO) that handles authentication and forwards the user's identity in an HTTP header.
+
+To enable this mode, set the `SSO_HEADER` environment variable to the name of the header injected by your proxy:
+
+| Variable | Required | Example | Description |
+|----------|----------|---------|-------------|
+| `SSO_HEADER` | Yes | `X-Remote-User` | Name of the HTTP header containing the authenticated user's username. Enables automatic login. |
+
+**Example** (Docker):
+```bash
+docker run -p 3000:3000 \
+  -e SSO_HEADER=X-Remote-User \
+  --name dm deployment-manager
+```
+
+When `SSO_HEADER` is set, the application will automatically sign in users using the value of that header and bypass the login interface entirely.
+
+> [!CAUTION]
+> **Critical Security Warning:** When Trusted Header SSO is enabled, the application treats the configured header as complete proof of authentication. You **must** ensure that:
+> 1. Clients cannot access the application container directly (e.g. configure network firewalls/Kubernetes Network Policies to block external traffic and only accept connections from your reverse proxy).
+> 2. The reverse proxy is configured to strip/sanitize the `SSO_HEADER` from all incoming client requests *before* adding its own verified header.
+
 ## Usage
 
 ### Logging In
