@@ -5,8 +5,9 @@ services:
     build: .
     image: deployment-manager:latest
     container_name: deployment-manager
-    ports:
-      - "3000:3000"
+    # Direct port exposure is disabled to ensure all external traffic goes through the Nginx proxy
+    # ports:
+    #   - "3000:3000"
     volumes:
       - ./data:/app/data
     environment:
@@ -32,7 +33,7 @@ services:
       # - SSO_HEADER: Name of the header containing the authenticated user's name
       #   (injected by reverse proxies like OAuth2 Proxy, Authelia, or Nginx)
       # ----------------------------------------------------
-      # - SSO_HEADER=X-Remote-User
+      - SSO_HEADER=X-Remote-User
 
       # ----------------------------------------------------
       # OPTION 3: Keycloak / OpenID Connect (OIDC) SSO
@@ -48,3 +49,15 @@ services:
       # - OIDC_CLIENT_SECRET=your-client-secret (optional)
 
     restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: deployment-manager-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - deployment-manager
+    restart: unless-stopped
+
