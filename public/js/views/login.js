@@ -62,14 +62,83 @@ const LoginView = {
     const btn = document.getElementById('login-btn');
     const loading = document.getElementById('login-loading');
 
+    // Register event listener first so it is ALWAYS active
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = usernameInput.value.trim();
+      if (!username) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Signing in…';
+
+      try {
+        const body = { username };
+        const activeManualMode = (this.authMode === 'sso' || this.authMode === 'oidc') 
+          ? this.fallbackMode 
+          : this.authMode;
+
+        if (activeManualMode === 'ad') {
+          body.password = passwordInput.value;
+        }
+
+        const data = await App.api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify(body),
+          noAuth: true,
+        });
+
+        App.setAuth(data.token, data.user);
+        App.showToast(`Welcome, ${data.user.display_name}!`, 'success');
+        App.navigate('dashboard');
+      } catch (err) {
+        App.showToast(err.message || 'Login failed', 'error');
+        btn.disabled = false;
+        const activeManualMode = (this.authMode === 'sso' || this.authMode === 'oidc') 
+          ? this.fallbackMode 
+          : this.authMode;
+
+        btn.innerHTML = activeManualMode === 'ad'
+          ? 'Sign In with Active Directory'
+          : 'Sign In with SPINEGO';
+      }
+    });
+
     // Determine auth mode from the server
     try {
       const data = await App.api('/api/auth/mode', { noAuth: true });
       this.authMode = data.mode;
+      this.fallbackMode = data.fallbackMode || 'local';
     } catch {
       // Default to local mode if the endpoint is unreachable
       this.authMode = 'local';
+      this.fallbackMode = 'local';
     }
+
+    const switchToManual = () => {
+      // Remove any SSO error or OIDC container
+      const ssoErr = document.getElementById('sso-error-container');
+      if (ssoErr) ssoErr.remove();
+      const oidcCont = document.getElementById('oidc-container');
+      if (oidcCont) oidcCont.remove();
+
+      // Configure the manual form based on fallbackMode
+      if (this.fallbackMode === 'ad') {
+        usernameInput.placeholder = 'Enter your Active Directory username';
+        passwordGroup.style.display = '';
+        passwordInput.required = true;
+        btn.textContent = 'Sign In with Active Directory';
+      } else {
+        usernameInput.placeholder = 'Enter your SPINEGO username';
+        passwordGroup.style.display = 'none';
+        passwordInput.required = false;
+        btn.textContent = 'Sign In with SPINEGO';
+      }
+
+      // Show the form, hide the loading indicator
+      loading.style.display = 'none';
+      form.style.display = '';
+      usernameInput.focus();
+    };
 
     // Configure the form based on auth mode
     if (this.authMode === 'sso') {
@@ -96,9 +165,16 @@ const LoginView = {
             <h3 style="margin-bottom: 6px;">SSO Sign-in Failed</h3>
             <p style="font-size: 13px; color: var(--text-muted);">${App.escapeHtml(err.message)}</p>
           </div>
-          <button class="btn btn-primary btn-block" onclick="window.location.reload()">Retry Sign-in</button>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="btn btn-primary btn-block" onclick="window.location.reload()">Retry Sign-in</button>
+            <button class="btn btn-secondary btn-block" id="sso-fallback-btn">Sign In Manually</button>
+          </div>
         `;
         card.appendChild(errDiv);
+
+        document.getElementById('sso-fallback-btn').addEventListener('click', () => {
+          switchToManual();
+        });
       }
       return;
     }
@@ -114,11 +190,18 @@ const LoginView = {
         <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
           Sign in securely using your Keycloak credentials.
         </p>
-        <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
           🔑 Sign In with Keycloak
         </a>
+        <button class="btn btn-ghost btn-block" id="oidc-fallback-btn" style="font-size: 13px; color: var(--text-muted);">
+          Sign In Manually
+        </button>
       `;
       card.appendChild(oidcDiv);
+
+      document.getElementById('oidc-fallback-btn').addEventListener('click', () => {
+        switchToManual();
+      });
       return;
     }
 
@@ -140,38 +223,5 @@ const LoginView = {
 
     // Focus the username input
     usernameInput.focus();
-
-    // Handle form submission
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = usernameInput.value.trim();
-      if (!username) return;
-
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Signing in…';
-
-      try {
-        const body = { username };
-        if (this.authMode === 'ad') {
-          body.password = passwordInput.value;
-        }
-
-        const data = await App.api('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify(body),
-          noAuth: true,
-        });
-
-        App.setAuth(data.token, data.user);
-        App.showToast(`Welcome, ${data.user.display_name}!`, 'success');
-        App.navigate('dashboard');
-      } catch (err) {
-        App.showToast(err.message || 'Login failed', 'error');
-        btn.disabled = false;
-        btn.innerHTML = this.authMode === 'ad'
-          ? 'Sign In with Active Directory'
-          : 'Sign In with SPINEGO';
-      }
-    });
   },
 };

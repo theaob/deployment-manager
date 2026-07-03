@@ -14,13 +14,26 @@ const router = express.Router();
  * whether to show a password field or auto-login.
  */
 router.get('/mode', (req, res) => {
-  if (isOidcEnabled()) {
-    return res.json({ mode: 'oidc' });
+  const oidcEnabled = isOidcEnabled();
+  const ssoEnabled = !!process.env.SSO_HEADER;
+  const adEnabled = isAdEnabled();
+  
+  let mode = 'local';
+  if (oidcEnabled) {
+    mode = 'oidc';
+  } else if (ssoEnabled) {
+    mode = 'sso';
+  } else if (adEnabled) {
+    mode = 'ad';
   }
-  if (process.env.SSO_HEADER) {
-    return res.json({ mode: 'sso' });
-  }
-  res.json({ mode: isAdEnabled() ? 'ad' : 'local' });
+
+  res.json({
+    mode,
+    fallbackMode: (ssoEnabled || oidcEnabled) ? 'ad' : (adEnabled ? 'ad' : 'local'),
+    adEnabled,
+    oidcEnabled,
+    ssoEnabled
+  });
 });
 
 /**
@@ -28,6 +41,7 @@ router.get('/mode', (req, res) => {
  * Logs in (or registers) a user.
  *
  * SSO mode:    Reads username from the proxy-injected HTTP header specified by SSO_HEADER.
+ *              Falls back to manual login (local/AD) if header is missing/empty and a body username is provided.
  * Local mode:  Body: { username: string }
  * AD mode:     Body: { username: string, password: string }
  */
@@ -35,16 +49,23 @@ router.post('/login', async (req, res) => {
   let username = req.body.username;
   const password = req.body.password;
   const ssoHeaderName = process.env.SSO_HEADER;
+  let isManualFallback = false;
 
   if (ssoHeaderName) {
     // Header keys are lowercased by Express/Node
     const ssoUser = req.headers[ssoHeaderName.toLowerCase()];
-    if (!ssoUser || typeof ssoUser !== 'string' || ssoUser.trim().length === 0) {
-      return res.status(401).json({
-        error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
-      });
+    if (ssoUser && typeof ssoUser === 'string' && ssoUser.trim().length > 0) {
+      username = ssoUser;
+    } else {
+      // SSO header is missing/empty. Check if client is trying to log in manually as fallback.
+      if (username && typeof username === 'string' && username.trim().length > 0) {
+        isManualFallback = true;
+      } else {
+        return res.status(401).json({
+          error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
+        });
+      }
     }
-    username = ssoUser;
   } else {
     // Standard login validation
     if (!username || typeof username !== 'string' || username.trim().length === 0) {
@@ -55,8 +76,15 @@ router.post('/login', async (req, res) => {
   const cleanUsername = username.trim().toLowerCase();
   const displayName = username.trim();
 
-  // --- AD mode (non-SSO): validate credentials via LDAP bind ---
-  if (!ssoHeaderName && isAdEnabled()) {
+  // --- Validate credentials via LDAP bind (if AD is enabled or manual SSO fallback is used) ---
+  const isAdManual = !ssoHeaderName && isAdEnabled();
+  const isSsoManualFallback = ssoHeaderName && isManualFallback;
+
+  if (isAdManual || isSsoManualFallback) {
+    if (!isAdEnabled()) {
+      return res.status(400).json({ error: 'Active Directory authentication is not configured on this server.' });
+    }
+
     if (!password) {
       return res.status(400).json({ error: 'Password is required for Active Directory login' });
     }
