@@ -53,6 +53,14 @@ const DashboardView = {
 
   async loadData(silent = false) {
     try {
+      // Prevent losing focus and input content if the user is typing in a reserve notes field
+      const activeEl = document.activeElement;
+      const isUserTypingNote = activeEl && activeEl.id && activeEl.id.startsWith('notes-');
+
+      if (silent && isUserTypingNote) {
+        return;
+      }
+
       const [clustersRes, myRes] = await Promise.all([
         App.api('/api/clusters'),
         App.api('/api/deployments/my-reservations/active'),
@@ -151,7 +159,7 @@ const DashboardView = {
       }
 
       return `
-        <div class="cluster-card" style="animation-delay: ${i * 80}ms">
+        <div class="cluster-card">
           <div class="cluster-card-header">
             <div class="cluster-info">
               <span class="cluster-name">${this.escapeHtml(cluster.name)}</span>
