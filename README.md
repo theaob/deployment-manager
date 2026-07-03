@@ -17,8 +17,8 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 
 ## Prerequisites
 
-- Node.js 16 or higher.
-- (Optional) Docker for running in a container.
+- Node.js 20 or higher.
+- (Optional) Docker and Docker Compose for containerized deployments.
 
 ## Setup
 
@@ -57,19 +57,50 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
     The `id` fields are used internally by the system.
 
 4.  **Run the server**:
-    ```bash
-    npm start
-    ```
+    - For production:
+      ```bash
+      npm start
+      ```
+    - For local development (with automatic reloading via nodemon):
+      ```bash
+      npm run dev
+      ```
     The server will start on `http://localhost:3000`.
 
 ### Docker
 
-To run in Docker:
+To run the application inside a single Docker container:
 
 ```bash
 docker build -t deployment-manager .
-docker run -p 3000:3000 --name dm deployment-manager
+docker run -p 3000:3000 --name dm -v dm-data:/app/data deployment-manager
 ```
+
+> **Note:** The `-v dm-data:/app/data` flag ensures the SQLite database is persisted across container restarts.
+
+### Docker Compose (Recommended)
+
+A multi-container setup with Nginx serving as a reverse proxy is configured in the root directory. To run using Docker Compose:
+
+1. Create a `data` directory in the project root to persist the SQLite database.
+2. Build and start the containers:
+   ```bash
+   docker-compose up -d
+   ```
+
+The Nginx proxy exposes port `80`, routing incoming HTTP traffic to the application container (listening on port `3000` internally). The app can then be accessed at `http://localhost`.
+
+This setup is ideal for integrating with Windows/Active Directory single sign-on using the SPNEGO/Kerberos Nginx module (pre-configured to forward identity headers securely).
+
+### General Configuration
+
+The following environment variables can be set to configure the server's basic behavior:
+
+| Variable | Required | Default / Example | Description |
+|----------|----------|---------|-------------|
+| `PORT` | No | `3000` | The port the application server listens on. |
+| `JWT_SECRET` | No (recommended for prod) | `deployment-manager-secret-key-change-in-production` | Secret key used to sign and verify JSON Web Tokens (JWT). |
+| `NODE_ENV` | No | `development` / `production` | Node environment state (e.g. `production` enables secure cookies for OIDC callbacks). |
 
 ### Active Directory Authentication
 
@@ -184,25 +215,42 @@ Admins have access to an "Admin" section:
 
 ## API Reference
 
-All endpoints require authentication (via the JWT token in local storage).
+All endpoints require authentication (via the `Authorization: Bearer <token>` HTTP header), except for the public endpoints noted below.
+
+### Authentication Endpoints
+
+| Method | Path | Public | Description |
+|--------|------|--------|-------------|
+| `GET` | `/api/auth/mode` | Yes | Returns the current active auth mode (`local`, `ad`, `sso`, `oidc`). |
+| `POST` | `/api/auth/login` | Yes | Authenticates user (methods vary by mode). Returns a JWT token and user info. |
+| `GET` | `/api/auth/me` | No | Gets information about the currently logged-in user. |
+| `GET` | `/api/auth/oidc/login` | Yes | Redirects browser to Keycloak/OIDC provider to initiate SSO flow. |
+| `GET` | `/api/auth/oidc/callback` | Yes | Callback receiver for OIDC authentication redirect. |
+
+### Cluster & Deployment Endpoints
+
+| Method | Path | Public | Description |
+|--------|------|--------|-------------|
+| `GET` | `/api/clusters` | No | Gets all clusters, deployments, and their active reservation status. |
+| `GET` | `/api/clusters/:clusterId` | No | Gets details of a single cluster and its deployments. |
+| `POST` | `/api/deployments/:id/reserve` | No | Reserves a deployment for the logged-in user. Body: `{ notes?: string }`. |
+| `POST` | `/api/deployments/:id/release` | No | Releases a deployment reservation (only reservor or admin can release). |
+| `GET` | `/api/deployments/:id/history` | No | Gets reservation history of a single deployment. |
+| `GET` | `/api/deployments/my-reservations/active` | No | Gets all active reservations for the current user. |
+
+### Administration Endpoints (Admin Role Required)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/auth/login` | Logs in or registers a user. Returns a token. |
-| `GET` | `/api/auth/me` | Gets current user info. |
-| `GET` | `/api/clusters` | Gets all clusters and deployments. |
-| `POST` | `/api/reservations` | Creates a reservation. |
-| `DELETE` | `/api/reservations/:id` | Releases a reservation. |
-| `GET` | `/api/reservations/mine` | Gets reservations for the current user. |
-| `GET` | `/api/reservations/active` | Gets all currently active reservations. |
-| `GET` | `/api/history` | Gets full reservation history (Admin). |
-| `POST` | `/api/admin/clusters` | Creates a new cluster (Admin). |
-| `PUT` | `/api/admin/clusters/:id` | Updates a cluster (Admin). |
-| `DELETE` | `/api/admin/clusters/:id` | Deletes a cluster and its deployments (Admin). |
-| `POST` | `/api/admin/clusters/:id/deployments` | Adds a deployment to a cluster (Admin). |
-| `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (Admin). |
-| `GET` | `/api/admin/users` | Lists all users (Admin). |
-| `PUT` | `/api/admin/users/:id/role` | Changes a user's role (Admin). |
+| `POST` | `/api/admin/clusters` | Creates a new cluster. Body: `{ name: string, environment: string }`. |
+| `PUT` | `/api/admin/clusters/:id` | Updates a cluster's name or environment. Body: `{ name?: string, environment?: string }`. |
+| `DELETE` | `/api/admin/clusters/:id` | Deletes a cluster and its deployments (requires all deployments to be unreserved). |
+| `POST` | `/api/admin/clusters/:id/deployments` | Adds a deployment to a cluster. Body: `{ name: string }`. |
+| `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (requires it to be unreserved). |
+| `GET` | `/api/admin/users` | Lists all registered users. |
+| `PUT` | `/api/admin/users/:id/role` | Updates a user's role. Body: `{ role: 'admin' \| 'user' }`. |
+| `GET` | `/api/admin/history` | Gets full reservation history across all deployments. Query params: `cluster_id`, `user_id`, `limit`, `offset`. |
+
 
 ## Releasing
 
