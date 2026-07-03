@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   deployment-manager:
     build: .
@@ -34,7 +32,6 @@ services:
       #   (injected by reverse proxies like OAuth2 Proxy, Authelia, or Nginx)
       # ----------------------------------------------------
       - SSO_HEADER=X-Remote-User
-
       # ----------------------------------------------------
       # OPTION 3: Keycloak / OpenID Connect (OIDC) SSO
       # ----------------------------------------------------
@@ -60,4 +57,3 @@ services:
     depends_on:
       - deployment-manager
     restart: unless-stopped
-

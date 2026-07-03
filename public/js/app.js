@@ -125,14 +125,52 @@ const App = {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const res = await fetch(url, {
-      ...options,
-      headers: { ...headers, ...options.headers },
-    });
+    const method = options.method || 'GET';
+    const reqHeaders = { ...headers, ...options.headers };
+    
+    let requestPayload = undefined;
+    if (options.body) {
+      try {
+        requestPayload = JSON.parse(options.body);
+      } catch {
+        requestPayload = options.body;
+      }
+    }
 
-    const data = await res.json();
+    const startTime = performance.now();
+    let res;
+    let data;
+
+    try {
+      res = await fetch(url, {
+        ...options,
+        headers: reqHeaders,
+      });
+      data = await res.json();
+    } catch (err) {
+      const duration = (performance.now() - startTime).toFixed(1);
+      console.error(
+        `%c❌ API Network/Parse Error: ${method} ${url} (Failed in ${duration}ms)`,
+        'color: #dc2626; font-weight: bold;',
+        {
+          request: { url, method, headers: reqHeaders, body: requestPayload },
+          error: err
+        }
+      );
+      throw err;
+    }
+
+    const duration = (performance.now() - startTime).toFixed(1);
 
     if (!res.ok) {
+      console.error(
+        `%c❌ API HTTP Error: ${method} ${url} -> Status ${res.status} (Failed in ${duration}ms)`,
+        'color: #dc2626; font-weight: bold;',
+        {
+          request: { url, method, headers: reqHeaders, body: requestPayload },
+          response: { status: res.status, data }
+        }
+      );
       // Handle expired token
       if (res.status === 401) {
         this.logout();
@@ -140,6 +178,15 @@ const App = {
       }
       throw new Error(data.error || `Request failed (${res.status})`);
     }
+
+    console.log(
+      `%c✅ API Success: ${method} ${url} -> Status ${res.status} (Completed in ${duration}ms)`,
+      'color: #16a34a; font-weight: bold;',
+      {
+        request: { url, method, headers: reqHeaders, body: requestPayload },
+        response: { status: res.status, data }
+      }
+    );
 
     return data;
   },
