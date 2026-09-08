@@ -13,6 +13,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
   - Reservations are time-stamped and visible in history.
   - Admins can see all reservations across all deployments, and force-release any of them.
   - Users can see their own history.
+- **Release Notifications**: Optional email (SMTP) and Zulip DM to a user when someone else releases their reservation for them — configured live from the Admin panel.
 - **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
 
 ## Prerequisites
@@ -181,9 +182,25 @@ docker run -p 3000:3000 \
 
 Admins have access to an "Admin" section:
 
-- **Users**: View all users and change their roles between `user` and `admin`.
+- **Users**: View all users, change their roles between `user` and `admin`, and set each user's email address (used for release notifications below).
 - **History**: A complete audit log of all reservations ever made, filterable by deployment or user.
 - **Cluster Management**: Add or remove clusters and deployments manually.
+- **Release Notifications**: Configure SMTP and/or Zulip, editable at runtime (unlike the auth-provider settings, these aren't environment variables — see below).
+
+### Release Notifications
+
+When a reservation is released by someone *other* than the person who made it — an admin force-release, or an automatic release once a timed reservation's duration runs out — the reservation's owner can be notified by email and/or a Zulip private message. A user releasing their own reservation never triggers a notification (they already know, they just did it).
+
+Configure this from **Admin → Release Notifications**:
+
+- **Email (SMTP)**: host, port, TLS/SSL toggle, username/password, and a "From" address.
+- **Zulip**: your Zulip site URL, a bot's email, and its API key ([create a bot](https://zulip.com/help/add-a-bot-or-integration) with "Generic bot" type in your Zulip organization).
+
+Both channels send to the same address: the recipient's **email**, set per-user in the Users table above. This assumes their Zulip account uses that same email — if your organization's Zulip is SSO'd against the same identity provider, it usually does. For OIDC/Keycloak users, email is populated automatically from the `email` claim on every login (and kept in sync with the IdP); for local/SSO-header users, an admin sets it by hand.
+
+Passwords and API keys are stored in the database, never echoed back by `GET /api/admin/settings` (only whether one is set) — leave the field blank when saving to keep the current secret. Use **Send Test Notification** to verify your configuration; it sends a test message to your own admin account's email (so make sure that's set too).
+
+> These settings live in the database and are editable from the Admin panel at runtime — unlike `OIDC_*`/`AD_*`/`SSO_HEADER`, there's no environment variable equivalent.
 
 ## API Reference
 
@@ -221,6 +238,10 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 | `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (requires it to be unreserved). |
 | `GET` | `/api/admin/users` | Lists all registered users. |
 | `PUT` | `/api/admin/users/:id/role` | Updates a user's role. Body: `{ role: 'admin' \| 'user' }`. |
+| `PUT` | `/api/admin/users/:id/email` | Sets (or clears) a user's email address. Body: `{ email: string \| null }`. |
+| `GET` | `/api/admin/settings` | Returns the current SMTP/Zulip notification settings. Secret fields are never echoed back — only `smtp_pass_set`/`zulip_bot_api_key_set` booleans. |
+| `PUT` | `/api/admin/settings` | Updates SMTP/Zulip notification settings. Omit or send an empty `smtp_pass`/`zulip_bot_api_key` to keep the currently stored secret. |
+| `POST` | `/api/admin/settings/test` | Sends a test notification through every enabled channel to the requesting admin's own email. |
 | `GET` | `/api/admin/history` | Gets full reservation history across all deployments. Query params: `cluster_id`, `user_id`, `limit`, `offset`. |
 
 

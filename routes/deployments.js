@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
+const { sweepExpiredReservations, notifyReservationReleased } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.post('/:id/reserve', (req, res) => {
   const { notes, duration_minutes: durationMinutesRaw } = req.body;
   const userId = req.user.id;
 
-  db.releaseExpiredReservations();
+  sweepExpiredReservations();
 
   // Validate duration_minutes, if provided
   let expiresAt = null;
@@ -110,6 +111,24 @@ router.post('/:id/release', (req, res) => {
 
   const updated = db.prepare('SELECT * FROM reservations WHERE id = ?').get(reservation.id);
 
+  // Notify the reservation's owner — but only when someone *other* than
+  // them released it (an admin force-release). A self-release doesn't
+  // need a notification; the user already knows, they just did it.
+  if (reservation.user_id !== userId) {
+    const owner = db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(reservation.user_id);
+    const deployment = db.prepare('SELECT name FROM deployments WHERE id = ?').get(id);
+    const cluster = db.prepare('SELECT name FROM clusters WHERE id = ?').get(reservation.cluster_id);
+    const releasedBy = db.prepare('SELECT display_name FROM users WHERE id = ?').get(userId);
+
+    notifyReservationReleased({
+      owner,
+      deploymentName: deployment?.name,
+      clusterName: cluster?.name,
+      reason: 'admin',
+      releasedByLabel: releasedBy?.display_name,
+    }).catch((err) => console.error('[notify] Release notification failed:', err.message));
+  }
+
   res.json({
     message: 'Deployment released successfully',
     reservation: updated,
@@ -146,7 +165,7 @@ router.get('/:id/history', (req, res) => {
 router.get('/my-reservations/active', (req, res) => {
   const userId = req.user.id;
 
-  db.releaseExpiredReservations();
+  sweepExpiredReservations();
 
   const reservations = db.prepare(`
     SELECT r.*, d.name as deployment_name, c.name as cluster_name, c.environment,

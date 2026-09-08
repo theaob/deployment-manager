@@ -2,10 +2,14 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { adminOnly } = require('../middleware/auth');
+const { getSettings, setSettings } = require('../lib/settings');
+const { sendTestNotification } = require('../lib/notifications');
 const fs = require('fs');
 const path = require('path');
 
 const router = express.Router();
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // All admin routes require admin role
 router.use(adminOnly);
@@ -139,7 +143,7 @@ router.delete('/deployments/:id', (req, res) => {
  * List all users.
  */
 router.get('/users', (req, res) => {
-  const users = db.prepare('SELECT id, username, display_name, role, created_at FROM users ORDER BY created_at').all();
+  const users = db.prepare('SELECT id, username, display_name, email, role, created_at FROM users ORDER BY created_at').all();
   res.json({ users });
 });
 
@@ -163,6 +167,109 @@ router.put('/users/:id/role', (req, res) => {
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   res.json({ message: `User role updated to ${role}` });
+});
+
+/**
+ * PUT /api/admin/users/:id/email
+ * Set (or clear) a user's email address — used as the recipient for
+ * release notifications (SMTP and Zulip both key off this same address).
+ * Body: { email: string | null }
+ */
+router.put('/users/:id/email', (req, res) => {
+  const { id } = req.params;
+  const { email } = req.body;
+
+  const cleanEmail = typeof email === 'string' ? email.trim() : '';
+
+  if (cleanEmail && !EMAIL_RE.test(cleanEmail)) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(cleanEmail || null, id);
+  res.json({ message: 'Email updated' });
+});
+
+/**
+ * GET /api/admin/settings
+ * Returns the current SMTP/Zulip notification settings. Secrets
+ * (SMTP password, Zulip bot API key) are never echoed back — only whether
+ * one is currently set, so the Admin panel can show "configured" without
+ * exposing the value.
+ */
+router.get('/settings', (req, res) => {
+  const raw = getSettings();
+
+  res.json({
+    settings: {
+      smtp_enabled: raw.smtp_enabled === 'true',
+      smtp_host: raw.smtp_host || '',
+      smtp_port: raw.smtp_port || '',
+      smtp_secure: raw.smtp_secure === 'true',
+      smtp_user: raw.smtp_user || '',
+      smtp_pass_set: !!raw.smtp_pass,
+      smtp_from: raw.smtp_from || '',
+      zulip_enabled: raw.zulip_enabled === 'true',
+      zulip_site: raw.zulip_site || '',
+      zulip_bot_email: raw.zulip_bot_email || '',
+      zulip_bot_api_key_set: !!raw.zulip_bot_api_key,
+    },
+  });
+});
+
+/**
+ * PUT /api/admin/settings
+ * Updates SMTP/Zulip notification settings. Secret fields
+ * (smtp_pass, zulip_bot_api_key) are only overwritten when a non-empty
+ * value is sent — leave them out (or send an empty string) to keep the
+ * currently stored secret.
+ */
+router.put('/settings', (req, res) => {
+  const body = req.body || {};
+  const updates = {};
+
+  const boolFields = ['smtp_enabled', 'smtp_secure', 'zulip_enabled'];
+  const textFields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'zulip_site', 'zulip_bot_email'];
+  const secretFields = ['smtp_pass', 'zulip_bot_api_key'];
+
+  for (const field of boolFields) {
+    if (field in body) updates[field] = body[field] ? 'true' : 'false';
+  }
+  for (const field of textFields) {
+    if (field in body) updates[field] = String(body[field] ?? '').trim();
+  }
+  for (const field of secretFields) {
+    if (body[field]) updates[field] = String(body[field]);
+  }
+
+  setSettings(updates);
+  res.json({ message: 'Settings updated' });
+});
+
+/**
+ * POST /api/admin/settings/test
+ * Sends a test message through whichever channels are enabled, to the
+ * requesting admin's own email address (must have one on file), to verify
+ * the notification settings actually work.
+ */
+router.post('/settings/test', async (req, res) => {
+  const admin = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+
+  if (!admin?.email) {
+    return res.status(400).json({ error: 'Set an email address for your own user before sending a test notification.' });
+  }
+
+  const settings = getSettings();
+  if (settings.smtp_enabled !== 'true' && settings.zulip_enabled !== 'true') {
+    return res.status(400).json({ error: 'Enable and configure at least one notification channel first.' });
+  }
+
+  const results = await sendTestNotification(admin.email);
+  res.json({ message: `Test notification attempted to ${admin.email}`, results });
 });
 
 /**

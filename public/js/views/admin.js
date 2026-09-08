@@ -55,6 +55,19 @@ const AdminView = {
                 <div class="skeleton skeleton-row"></div>
               </div>
             </div>
+
+            <!-- Notification Settings -->
+            <div class="admin-section">
+              <div class="admin-section-header">
+                <h3>🔔 Release Notifications</h3>
+              </div>
+              <p style="color: var(--text-tertiary); font-size: 13px; margin-bottom: 16px;">
+                When someone's reservation is released by an admin, or auto-released because its time limit ran out, notify them by email and/or Zulip. A user needs an email address on file (see the Users table above) to receive either.
+              </p>
+              <div id="notification-settings">
+                <div class="skeleton skeleton-row"></div>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -74,16 +87,19 @@ const AdminView = {
 
   async loadData() {
     try {
-      const [clustersRes, usersRes] = await Promise.all([
+      const [clustersRes, usersRes, settingsRes] = await Promise.all([
         App.api('/api/clusters'),
         App.api('/api/admin/users'),
+        App.api('/api/admin/settings'),
       ]);
 
       this.clusters = clustersRes.clusters;
       this.users = usersRes.users;
+      this.settings = settingsRes.settings;
 
       this.renderClusters();
       this.renderUsers();
+      this.renderNotificationSettings();
     } catch (err) {
       App.showToast('Failed to load admin data: ' + err.message, 'error');
     }
@@ -154,6 +170,7 @@ const AdminView = {
             <tr>
               <th>Username</th>
               <th>Display Name</th>
+              <th>Email</th>
               <th>Role</th>
               <th>Joined</th>
               <th>Actions</th>
@@ -164,6 +181,19 @@ const AdminView = {
               <tr>
                 <td class="mono">${this.escapeHtml(user.username)}</td>
                 <td>${this.escapeHtml(user.display_name)}</td>
+                <td>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input
+                      type="email"
+                      class="user-email-input"
+                      id="email-${user.id}"
+                      value="${this.escapeHtml(user.email || '')}"
+                      placeholder="user@example.com"
+                      style="width: 180px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;"
+                    />
+                    <button class="btn btn-ghost btn-sm" onclick="AdminView.saveUserEmail('${user.id}')">Save</button>
+                  </div>
+                </td>
                 <td><span class="role-tag ${user.role}">${user.role}</span></td>
                 <td class="mono">${new Date(user.created_at + 'Z').toLocaleDateString()}</td>
                 <td>
@@ -178,6 +208,78 @@ const AdminView = {
           </tbody>
         </table>
       </div>
+    `;
+  },
+
+  renderNotificationSettings() {
+    const container = document.getElementById('notification-settings');
+    if (!container) return;
+
+    const s = this.settings || {};
+
+    container.innerHTML = `
+      <form id="notification-settings-form" onsubmit="return AdminView.saveNotificationSettings(event)" style="display: flex; flex-direction: column; gap: 20px;">
+        <div>
+          <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px;">
+            <input type="checkbox" id="smtp-enabled" ${s.smtp_enabled ? 'checked' : ''} />
+            Email (SMTP)
+          </label>
+          <div class="admin-form">
+            <div class="input-group">
+              <label for="smtp-host">Host</label>
+              <input type="text" id="smtp-host" value="${this.escapeHtml(s.smtp_host || '')}" placeholder="smtp.example.com" />
+            </div>
+            <div class="input-group" style="max-width: 100px;">
+              <label for="smtp-port">Port</label>
+              <input type="number" id="smtp-port" value="${this.escapeHtml(s.smtp_port || '')}" placeholder="587" />
+            </div>
+            <div class="input-group">
+              <label for="smtp-user">Username</label>
+              <input type="text" id="smtp-user" value="${this.escapeHtml(s.smtp_user || '')}" autocomplete="off" />
+            </div>
+            <div class="input-group">
+              <label for="smtp-pass">Password</label>
+              <input type="password" id="smtp-pass" placeholder="${s.smtp_pass_set ? '••••••••  (leave blank to keep)' : 'Not set'}" autocomplete="new-password" />
+            </div>
+            <div class="input-group">
+              <label for="smtp-from">From Address</label>
+              <input type="text" id="smtp-from" value="${this.escapeHtml(s.smtp_from || '')}" placeholder="deployment-manager@example.com" />
+            </div>
+            <div class="input-group" style="flex: 0 0 auto; min-width: auto;">
+              <label style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                <input type="checkbox" id="smtp-secure" ${s.smtp_secure ? 'checked' : ''} />
+                TLS/SSL
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 20px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px;">
+            <input type="checkbox" id="zulip-enabled" ${s.zulip_enabled ? 'checked' : ''} />
+            Zulip
+          </label>
+          <div class="admin-form">
+            <div class="input-group">
+              <label for="zulip-site">Site URL</label>
+              <input type="text" id="zulip-site" value="${this.escapeHtml(s.zulip_site || '')}" placeholder="https://yourorg.zulipchat.com" />
+            </div>
+            <div class="input-group">
+              <label for="zulip-bot-email">Bot Email</label>
+              <input type="text" id="zulip-bot-email" value="${this.escapeHtml(s.zulip_bot_email || '')}" placeholder="bot@yourorg.zulipchat.com" autocomplete="off" />
+            </div>
+            <div class="input-group">
+              <label for="zulip-bot-api-key">Bot API Key</label>
+              <input type="password" id="zulip-bot-api-key" placeholder="${s.zulip_bot_api_key_set ? '••••••••  (leave blank to keep)' : 'Not set'}" autocomplete="new-password" />
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+          <button type="button" class="btn btn-ghost" onclick="AdminView.sendTestNotification()">Send Test Notification</button>
+        </div>
+      </form>
     `;
   },
 
@@ -260,6 +362,69 @@ const AdminView = {
       await this.loadData();
     } catch (err) {
       App.showToast(err.message || 'Failed to update role', 'error');
+    }
+  },
+
+  async saveUserEmail(userId) {
+    const input = document.getElementById(`email-${userId}`);
+    if (!input) return;
+    const email = input.value.trim();
+
+    try {
+      await App.api(`/api/admin/users/${userId}/email`, {
+        method: 'PUT',
+        body: JSON.stringify({ email }),
+      });
+      App.showToast('Email updated', 'success');
+      await this.loadData();
+    } catch (err) {
+      App.showToast(err.message || 'Failed to update email', 'error');
+    }
+  },
+
+  async saveNotificationSettings(e) {
+    e.preventDefault();
+
+    const body = {
+      smtp_enabled: document.getElementById('smtp-enabled').checked,
+      smtp_host: document.getElementById('smtp-host').value.trim(),
+      smtp_port: document.getElementById('smtp-port').value.trim(),
+      smtp_secure: document.getElementById('smtp-secure').checked,
+      smtp_user: document.getElementById('smtp-user').value.trim(),
+      smtp_from: document.getElementById('smtp-from').value.trim(),
+      zulip_enabled: document.getElementById('zulip-enabled').checked,
+      zulip_site: document.getElementById('zulip-site').value.trim(),
+      zulip_bot_email: document.getElementById('zulip-bot-email').value.trim(),
+    };
+
+    // Only send secret fields if the admin actually typed a new value —
+    // an empty password/API key field means "keep the current one".
+    const smtpPass = document.getElementById('smtp-pass').value;
+    if (smtpPass) body.smtp_pass = smtpPass;
+    const zulipKey = document.getElementById('zulip-bot-api-key').value;
+    if (zulipKey) body.zulip_bot_api_key = zulipKey;
+
+    try {
+      await App.api('/api/admin/settings', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+      App.showToast('Notification settings saved', 'success');
+      await this.loadData();
+    } catch (err) {
+      App.showToast(err.message || 'Failed to save settings', 'error');
+    }
+
+    return false;
+  },
+
+  async sendTestNotification() {
+    try {
+      const data = await App.api('/api/admin/settings/test', { method: 'POST' });
+      const parts = Object.entries(data.results || {}).map(([channel, result]) => `${channel}: ${result === 'ok' ? '✓' : '✗ ' + result}`);
+      App.showToast(parts.length ? `${data.message} — ${parts.join(', ')}` : data.message, parts.every(p => p.includes('✓')) ? 'success' : 'error');
+    } catch (err) {
+      App.showToast(err.message || 'Failed to send test notification', 'error');
     }
   },
 

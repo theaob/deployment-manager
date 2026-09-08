@@ -217,6 +217,7 @@ router.get('/oidc/callback', async (req, res) => {
     const displayName = (claims.name || `${claims.given_name || ''} ${claims.family_name || ''}`.trim() || username).trim();
 
     const cleanUsername = username.toLowerCase();
+    const claimedEmail = typeof claims.email === 'string' ? claims.email.trim() : '';
 
     // Look up or auto-register user in SQLite
     let user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
@@ -226,11 +227,17 @@ router.get('/oidc/callback', async (req, res) => {
       const role = userCount === 0 ? 'admin' : 'user';
       const id = uuidv4();
 
-      db.prepare('INSERT INTO users (id, username, display_name, role) VALUES (?, ?, ?, ?)').run(
-        id, cleanUsername, displayName, role
+      db.prepare('INSERT INTO users (id, username, display_name, email, role) VALUES (?, ?, ?, ?, ?)').run(
+        id, cleanUsername, displayName, claimedEmail || null, role
       );
 
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    } else if (claimedEmail && user.email !== claimedEmail) {
+      // Keep the email in sync with the IdP on every login — Keycloak is
+      // the source of truth for identity once OIDC is configured, so this
+      // intentionally overrides any value an admin set by hand.
+      db.prepare('UPDATE users SET email = ? WHERE id = ?').run(claimedEmail, user.id);
+      user.email = claimedEmail;
     }
 
     // Generate app JWT

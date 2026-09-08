@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
+const { sweepExpiredReservations } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -8,7 +9,7 @@ const router = express.Router();
  * Returns all clusters with their deployments and current reservation status.
  */
 router.get('/', (req, res) => {
-  db.releaseExpiredReservations();
+  sweepExpiredReservations();
 
   const clusters = db.prepare('SELECT * FROM clusters ORDER BY name').all();
 
@@ -56,7 +57,7 @@ router.get('/', (req, res) => {
  * Returns a single cluster with its deployments.
  */
 router.get('/:clusterId', (req, res) => {
-  db.releaseExpiredReservations();
+  sweepExpiredReservations();
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(req.params.clusterId);
   if (!cluster) {
@@ -81,6 +82,7 @@ router.get('/:clusterId', (req, res) => {
         username: activeReservation.username,
         display_name: activeReservation.display_name,
         reserved_at: activeReservation.reserved_at,
+        expires_at: activeReservation.expires_at,
         notes: activeReservation.notes,
       } : null,
     };
