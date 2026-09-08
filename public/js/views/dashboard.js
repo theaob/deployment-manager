@@ -202,13 +202,13 @@ const DashboardView = {
       <div class="deployment-row" id="deploy-row-${dep.id}">
         <div class="deployment-info">
           <span class="status-dot ${statusClass}"></span>
-          <span class="deployment-name">${this.escapeHtml(dep.name)}</span>
+          <span class="deployment-name" title="${this.escapeHtml(dep.name)}">${this.escapeHtml(dep.name)}</span>
         </div>
         <div class="deployment-meta">
           ${isReserved ? `
             <span class="reserved-by">
               <span class="user-icon">${(dep.reservation.display_name || '?')[0].toUpperCase()}</span>
-              ${this.escapeHtml(dep.reservation.display_name)}
+              <span class="reserved-by-name" title="${this.escapeHtml(dep.reservation.display_name)}">${this.escapeHtml(dep.reservation.display_name)}</span>
             </span>
             <span class="time-tracker ${longDuration ? 'long-duration' : ''}" data-reserved-at="${dep.reservation.reserved_at}">
               <span class="clock-icon">⏱</span>

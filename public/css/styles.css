@@ -895,6 +895,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: var(--space-md);
   margin: var(--space-xs) 0;
   border-radius: var(--radius-md);
@@ -957,8 +958,12 @@ a {
 .deployment-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm) var(--space-md);
   flex-shrink: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .reserved-by {
@@ -983,6 +988,14 @@ a {
   font-size: 9px;
   font-weight: 700;
   color: white;
+  flex-shrink: 0;
+}
+
+.reserved-by-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- Time Tracker ---------- */
@@ -1470,15 +1483,6 @@ a {
 
   .my-reservations-grid {
     grid-template-columns: 1fr;
-  }
-
-  .deployment-row {
-    flex-wrap: wrap;
-  }
-
-  .deployment-meta {
-    width: 100%;
-    justify-content: flex-end;
   }
 
   .filter-bar {
