@@ -1,5 +1,5 @@
 /**
- * Login View — SPINEGO branded login screen
+ * Login View
  * Supports: "local" (username only) manual login, "sso" (trusted header)
  * with a manual fallback if the header is missing, and "oidc" (Keycloak) —
  * which has no manual fallback, since Keycloak is the sole identity source
@@ -15,7 +15,6 @@ const LoginView = {
           <div class="login-brand">
             <div class="login-logo">DM</div>
             <h1>Deployment Manager</h1>
-            <div class="subtitle">Powered by SPINEGO</div>
           </div>
           <form class="login-form" id="login-form" style="display:none;">
             <div class="input-group">
@@ -37,9 +36,6 @@ const LoginView = {
             <span class="spinner"></span>
             <p style="margin-top: 12px; color: var(--text-muted); font-size: 13px;">Checking authentication mode…</p>
           </div>
-          <p style="text-align: center; margin-top: 16px; font-size: 12px; color: var(--text-muted);">
-            First user to sign in becomes the administrator.
-          </p>
         </div>
       </div>
     `;
@@ -73,7 +69,7 @@ const LoginView = {
       } catch (err) {
         App.showToast(err.message || 'Login failed', 'error');
         btn.disabled = false;
-        btn.innerHTML = 'Sign In with SPINEGO';
+        btn.innerHTML = 'Sign In';
       }
     });
 
@@ -93,8 +89,8 @@ const LoginView = {
       const oidcCont = document.getElementById('oidc-container');
       if (oidcCont) oidcCont.remove();
 
-      usernameInput.placeholder = 'Enter your SPINEGO username';
-      btn.textContent = 'Sign In with SPINEGO';
+      usernameInput.placeholder = 'Enter your username';
+      btn.textContent = 'Sign In';
 
       // Show the form, hide the loading indicator
       loading.style.display = 'none';
@@ -164,8 +160,8 @@ const LoginView = {
     }
 
     // Local mode
-    usernameInput.placeholder = 'Enter your SPINEGO username';
-    btn.textContent = 'Sign In with SPINEGO';
+    usernameInput.placeholder = 'Enter your username';
+    btn.textContent = 'Sign In';
 
     // Show the form, hide the loading indicator
     loading.style.display = 'none';
