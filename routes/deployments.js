@@ -55,9 +55,30 @@ router.post('/:id/reserve', (req, res) => {
 
   // Create reservation
   const reservationId = uuidv4();
-  db.prepare(
-    'INSERT INTO reservations (id, deployment_id, cluster_id, user_id, notes, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(reservationId, id, deployment.cluster_id, userId, notes || null, expiresAt);
+  try {
+    db.prepare(
+      'INSERT INTO reservations (id, deployment_id, cluster_id, user_id, notes, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(reservationId, id, deployment.cluster_id, userId, notes || null, expiresAt);
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      // deployment_id is known-good (just fetched above); the two other
+      // realistic causes are a deployment whose cluster_id points at a
+      // cluster that no longer exists (a data-integrity issue — see the
+      // foreign_key_check warning logged at startup), or a JWT for a user
+      // that's since been removed from the database. Either way this is
+      // not something the user did wrong, so don't blame their input.
+      console.error('[data-integrity] Reservation insert failed a foreign key check:', {
+        deploymentId: id,
+        clusterId: deployment.cluster_id,
+        userId,
+        message: err.message,
+      });
+      return res.status(500).json({
+        error: 'Could not create the reservation due to a data integrity issue (a referenced cluster or user no longer exists). Please contact an administrator.',
+      });
+    }
+    throw err;
+  }
 
   const reservation = db.prepare(`
     SELECT r.*, u.username, u.display_name

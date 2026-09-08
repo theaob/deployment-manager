@@ -162,6 +162,23 @@ function seedFromConfig() {
 // Run seed on initialization
 seedFromConfig();
 
+// Surface any pre-existing foreign key violations loudly at startup —
+// normally impossible through this app's own code paths (foreign_keys is
+// always ON here), but directly editing the SQLite file with an external
+// tool that doesn't enable FK enforcement (a common default) can leave
+// orphaned rows behind. Those then surface later as a cryptic
+// "FOREIGN KEY constraint failed" crash on some unrelated insert/update —
+// logging them now, with exactly which row and table, makes that
+// diagnosable instead of a mystery.
+const fkViolations = db.pragma('foreign_key_check');
+if (fkViolations.length > 0) {
+  console.error(`[integrity] WARNING: found ${fkViolations.length} foreign key violation(s) in the database:`);
+  for (const v of fkViolations) {
+    console.error(`  - table "${v.table}" row ${v.rowid} has a dangling reference to "${v.parent}" (constraint #${v.fkid})`);
+  }
+  console.error('[integrity] These rows will likely cause "FOREIGN KEY constraint failed" errors when related records are created or updated. Run `PRAGMA foreign_key_check;` against data/deployment-manager.db to inspect them, then either delete the offending row or repoint it at a valid parent.');
+}
+
 // Note: the startup catch-up sweep for expired reservations lives in
 // server.js (via lib/notifications' sweepExpiredReservations), not here —
 // notifications need to read from this module, so triggering the sweep
