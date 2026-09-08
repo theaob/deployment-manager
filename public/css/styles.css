@@ -828,6 +828,13 @@ a {
   gap: var(--space-sm);
 }
 
+/* The env-badge pill has its own horizontal padding, so its visible text
+   sits inset from the badge's box edge. Pull it back so "STAGING" lines
+   up visually under "Alpha Cluster" instead of looking indented. */
+.cluster-card-header .env-badge {
+  margin-left: -10px;
+}
+
 .env-badge {
   font-size: 10px;
   padding: 3px 10px;
