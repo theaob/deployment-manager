@@ -175,6 +175,10 @@ To enable OIDC, set the following environment variables:
 | `OIDC_CLIENT_ID` | Yes | `deployment-manager` | The Client ID configured in Keycloak. |
 | `OIDC_REDIRECT_URI` | Yes | `http://localhost:3000/api/auth/oidc/callback` | The callback URL registered in Keycloak. |
 | `OIDC_CLIENT_SECRET` | No | `your-client-secret` | The Client Secret. Only required for confidential clients; omit for public clients. |
+| `OIDC_CA_CERT_PATH` | No | `/app/certs/ca.crt` | Path to a PEM CA certificate to trust when connecting to Keycloak, in addition to Node's default trust store. Use this when Keycloak's TLS certificate is signed by an internal/intranet CA (or is self-signed) — fixes `self-signed certificate in certificate chain` errors. |
+| `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification entirely for OIDC requests. Only for internal/test environments — prefer `OIDC_CA_CERT_PATH` whenever possible. |
+
+> **Certificate errors:** If OIDC login fails with `self-signed certificate in certificate chain`, Node doesn't trust the CA that issued Keycloak's TLS certificate. Export that CA's certificate as PEM, mount it into the container, and set `OIDC_CA_CERT_PATH` to its path — this trusts your CA specifically rather than disabling verification.
 
 #### Keycloak Client Configuration:
 1. Create a client with ID `deployment-manager` (or matching `OIDC_CLIENT_ID`).
