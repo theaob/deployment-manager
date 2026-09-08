@@ -13,10 +13,16 @@ function isOidcEnabled() {
 }
 
 /**
- * Configures the HTTPS agent used by openid-client for discovery, token,
+ * Configures the HTTP options used by openid-client for discovery, token,
  * and userinfo requests, so a Keycloak instance on an internal/intranet CA
  * (or a genuinely self-signed cert) can be trusted without disabling TLS
  * verification process-wide.
+ *
+ * openid-client issues requests via Node's native https.request() and only
+ * forwards a fixed allow-list of options (agent, ca, cert, ...) through
+ * custom.setHttpOptionsDefaults(). Notably `rejectUnauthorized` is NOT in
+ * that allow-list, so disabling verification has to go through a real
+ * https.Agent instance rather than a plain options object.
  *
  * Environment variables:
  *   OIDC_CA_CERT_PATH          — Path to a PEM CA certificate (or bundle) to trust,
@@ -39,18 +45,21 @@ function configureHttpDefaults() {
     return;
   }
 
-  const agentOptions = { rejectUnauthorized };
+  const httpOptions = {};
+
   if (caCertPath) {
     console.log(`[OIDC] Trusting CA certificate at: ${caCertPath}`);
-    agentOptions.ca = fs.readFileSync(caCertPath);
-  }
-  if (!rejectUnauthorized) {
-    console.warn('[OIDC] WARNING: OIDC_TLS_REJECT_UNAUTHORIZED=false — TLS certificate verification is DISABLED for the OIDC provider. Do not use this in production.');
+    httpOptions.ca = fs.readFileSync(caCertPath);
   }
 
-  custom.setHttpOptionsDefaults({
-    agent: { https: new https.Agent(agentOptions) },
-  });
+  if (!rejectUnauthorized) {
+    console.warn('[OIDC] WARNING: OIDC_TLS_REJECT_UNAUTHORIZED=false — TLS certificate verification is DISABLED for the OIDC provider. Do not use this in production.');
+    // Must be a real Agent instance — openid-client passes this straight to
+    // https.request(), which rejects a plain { rejectUnauthorized: false } object.
+    httpOptions.agent = new https.Agent({ rejectUnauthorized: false });
+  }
+
+  custom.setHttpOptionsDefaults(httpOptions);
 }
 
 /**
