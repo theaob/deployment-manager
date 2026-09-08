@@ -53,14 +53,6 @@ const DashboardView = {
 
   async loadData(silent = false) {
     try {
-      // Prevent losing focus and input content if the user is typing in a reserve notes field
-      const activeEl = document.activeElement;
-      const isUserTypingNote = activeEl && activeEl.id && activeEl.id.startsWith('notes-');
-
-      if (silent && isUserTypingNote) {
-        return;
-      }
-
       const [clustersRes, myRes] = await Promise.all([
         App.api('/api/clusters'),
         App.api('/api/deployments/my-reservations/active'),
@@ -102,11 +94,17 @@ const DashboardView = {
                 <span class="deploy-name">${this.escapeHtml(r.deployment_name)}</span>
                 <span class="cluster-name">${this.escapeHtml(r.cluster_name)} · ${r.environment}</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="my-reservation-actions">
                 <span class="time-tracker" data-reserved-at="${r.reserved_at}">
                   <span class="clock-icon">⏱</span>
                   <span class="timer-value">${this.formatDuration(r.reserved_at)}</span>
                 </span>
+                ${r.expires_at ? `
+                  <span class="time-tracker expiry-badge" data-expires-at="${r.expires_at}" title="Auto-releases at ${new Date(r.expires_at + 'Z').toLocaleString()}">
+                    <span class="clock-icon">⏳</span>
+                    <span class="expiry-value">${this.formatRemaining(r.expires_at)}</span>
+                  </span>
+                ` : ''}
                 <button class="btn btn-warning btn-sm" onclick="DashboardView.releaseDeployment('${r.deployment_id}')">
                   Release
                 </button>
@@ -214,14 +212,17 @@ const DashboardView = {
               <span class="clock-icon">⏱</span>
               <span class="timer-value">${this.formatDuration(dep.reservation.reserved_at)}</span>
             </span>
+            ${dep.reservation.expires_at ? `
+              <span class="time-tracker expiry-badge" data-expires-at="${dep.reservation.expires_at}" title="Auto-releases at ${new Date(dep.reservation.expires_at + 'Z').toLocaleString()}">
+                <span class="clock-icon">⏳</span>
+                <span class="expiry-value">${this.formatRemaining(dep.reservation.expires_at)}</span>
+              </span>
+            ` : ''}
           ` : ''}
           ${!isReserved ? `
-            <div class="reserve-form">
-              <input type="text" placeholder="Notes (optional)" id="notes-${dep.id}" />
-              <button class="btn btn-success btn-sm" onclick="DashboardView.reserveDeployment('${dep.id}')">
-                Reserve
-              </button>
-            </div>
+            <button class="btn btn-success btn-sm" onclick="DashboardView.openReserveModal('${dep.id}', '${this.escapeHtml(dep.name)}')">
+              Reserve
+            </button>
           ` : ''}
           ${isMine ? `
             <button class="btn btn-warning btn-sm" onclick="DashboardView.releaseDeployment('${dep.id}')">
@@ -263,23 +264,89 @@ const DashboardView = {
         const hours = this.getDurationHours(reservedAt);
         el.classList.toggle('long-duration', hours > 4);
       });
+      document.querySelectorAll('.expiry-badge').forEach(el => {
+        const expiresAt = el.dataset.expiresAt;
+        if (!expiresAt) return;
+        const expiryVal = el.querySelector('.expiry-value');
+        if (expiryVal) {
+          expiryVal.textContent = this.formatRemaining(expiresAt);
+        }
+      });
     }, 1000);
   },
 
-  async reserveDeployment(deploymentId) {
-    const notesInput = document.getElementById(`notes-${deploymentId}`);
-    const notes = notesInput ? notesInput.value.trim() : '';
+  /**
+   * Opens a modal asking for optional notes and a reservation duration,
+   * then reserves the deployment on confirm.
+   */
+  openReserveModal(deploymentId, deploymentName) {
+    const existing = document.getElementById('reserve-modal-overlay');
+    if (existing) existing.remove();
 
-    try {
-      await App.api(`/api/deployments/${deploymentId}/reserve`, {
-        method: 'POST',
-        body: JSON.stringify({ notes }),
-      });
-      App.showToast('Deployment reserved!', 'success');
-      await this.loadData();
-    } catch (err) {
-      App.showToast(err.message || 'Failed to reserve', 'error');
-    }
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'reserve-modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>Reserve "${this.escapeHtml(deploymentName)}"</h3>
+        <form id="reserve-modal-form">
+          <div class="input-group">
+            <label for="reserve-duration-input">Duration</label>
+            <select id="reserve-duration-input">
+              <option value="">No time limit</option>
+              <option value="30">30 minutes</option>
+              <option value="60" selected>1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="240">4 hours</option>
+              <option value="480">8 hours</option>
+              <option value="1440">1 day</option>
+            </select>
+          </div>
+          <div class="input-group" style="margin-top: 12px;">
+            <label for="reserve-notes-input">Notes (optional)</label>
+            <input type="text" id="reserve-notes-input" placeholder="What are you working on?" autocomplete="off" autofocus />
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" id="reserve-modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="reserve-modal-confirm">Reserve</button>
+          </div>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.getElementById('reserve-modal-cancel').addEventListener('click', close);
+
+    document.getElementById('reserve-modal-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const notes = document.getElementById('reserve-notes-input').value.trim();
+      const durationRaw = document.getElementById('reserve-duration-input').value;
+      const duration_minutes = durationRaw ? Number(durationRaw) : null;
+
+      const confirmBtn = document.getElementById('reserve-modal-confirm');
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<span class="spinner"></span> Reserving…';
+
+      try {
+        await App.api(`/api/deployments/${deploymentId}/reserve`, {
+          method: 'POST',
+          body: JSON.stringify({ notes, duration_minutes }),
+        });
+        App.showToast('Deployment reserved!', 'success');
+        close();
+        await this.loadData();
+      } catch (err) {
+        App.showToast(err.message || 'Failed to reserve', 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Reserve';
+      }
+    });
+
+    document.getElementById('reserve-notes-input').focus();
   },
 
   async releaseDeployment(deploymentId) {
@@ -318,6 +385,25 @@ const DashboardView = {
     return (now - reserved) / (1000 * 60 * 60);
   },
 
+  /** Formats the time remaining until a reservation auto-releases. */
+  formatRemaining(expiresAt) {
+    const now = new Date();
+    const expires = new Date(expiresAt + 'Z'); // SQLite stores UTC
+    const diffMs = expires - now;
+
+    if (diffMs <= 0) return 'expiring…';
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ${hours % 24}h left`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m left`;
+    if (minutes > 0) return `${minutes}m left`;
+    return `${totalSeconds}s left`;
+  },
+
   escapeHtml(str) {
     if (!str) return '';
     const div = document.createElement('div');
@@ -334,5 +420,7 @@ const DashboardView = {
       clearInterval(this.refreshInterval);
       this.refreshInterval = null;
     }
+    const modal = document.getElementById('reserve-modal-overlay');
+    if (modal) modal.remove();
   },
 };

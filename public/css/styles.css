@@ -348,7 +348,8 @@ a {
   margin-bottom: var(--space-sm);
 }
 
-.input-group input {
+.input-group input,
+.input-group select {
   width: 100%;
   padding: 14px 16px;
   background: var(--bg-input);
@@ -361,7 +362,8 @@ a {
   outline: none;
 }
 
-.input-group input:focus {
+.input-group input:focus,
+.input-group select:focus {
   background: var(--bg-input-focus);
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
@@ -369,6 +371,11 @@ a {
 
 .input-group input::placeholder {
   color: var(--text-muted);
+}
+
+.input-group select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 /* ---------- Buttons ---------- */
@@ -713,7 +720,19 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
   transition: all var(--transition-base);
+}
+
+.my-reservation-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .my-reservation-card:hover {
@@ -1031,32 +1050,12 @@ a {
   color: var(--status-reserved-other);
 }
 
-/* ============================================
-   NOTES INPUT (for reservation)
-   ============================================ */
-
-.reserve-form {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.reserve-form input {
-  padding: 6px 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  width: 140px;
-  outline: none;
-  transition: all var(--transition-base);
-}
-
-.reserve-form input:focus {
-  border-color: var(--accent-primary);
-  width: 200px;
+/* A .time-tracker showing time *until* auto-release, rather than elapsed
+   time — same shape, distinct accent so it isn't confused with the timer. */
+.expiry-badge {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+  color: var(--accent-primary);
 }
 
 /* ============================================

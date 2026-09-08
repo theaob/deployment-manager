@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { authMiddleware } = require('./middleware/auth');
+const db = require('./db/database');
 
 const cookieParser = require('cookie-parser');
 
@@ -56,6 +57,15 @@ app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
+
+// Periodic sweep so timed reservations get auto-released even when nobody
+// is actively hitting an endpoint that would trigger it defensively.
+setInterval(() => {
+  const released = db.releaseExpiredReservations();
+  if (released > 0) {
+    console.log(`[reservations] Auto-released ${released} expired reservation(s)`);
+  }
+}, 60 * 1000);
 
 app.listen(PORT, () => {
   console.log(`\n🚀 Deployment Manager running at http://localhost:${PORT}\n`);

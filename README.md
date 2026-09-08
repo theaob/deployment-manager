@@ -9,9 +9,9 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 - **SSO Support**: Trusted-header SSO or Keycloak/OpenID Connect for centralized authentication.
 - **Cluster Management**: Define clusters and the deployments within them.
 - **Reservation System**:
-  - Users can reserve any deployment.
+  - Users can reserve any deployment, optionally for a fixed duration — the reservation is auto-released once it elapses.
   - Reservations are time-stamped and visible in history.
-  - Admins can see all reservations across all deployments.
+  - Admins can see all reservations across all deployments, and force-release any of them.
   - Users can see their own history.
 - **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
 
@@ -205,7 +205,7 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 |--------|------|--------|-------------|
 | `GET` | `/api/clusters` | No | Gets all clusters, deployments, and their active reservation status. |
 | `GET` | `/api/clusters/:clusterId` | No | Gets details of a single cluster and its deployments. |
-| `POST` | `/api/deployments/:id/reserve` | No | Reserves a deployment for the logged-in user. Body: `{ notes?: string }`. |
+| `POST` | `/api/deployments/:id/reserve` | No | Reserves a deployment for the logged-in user. Body: `{ notes?: string, duration_minutes?: number }`. Omit `duration_minutes` (or pass `null`) for no time limit; otherwise the reservation is auto-released once it elapses (max 43200 = 30 days). |
 | `POST` | `/api/deployments/:id/release` | No | Releases a deployment reservation (only reservor or admin can release). |
 | `GET` | `/api/deployments/:id/history` | No | Gets reservation history of a single deployment. |
 | `GET` | `/api/deployments/my-reservations/active` | No | Gets all active reservations for the current user. |
