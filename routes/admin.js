@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { adminOnly } = require('../middleware/auth');
 const { getSettings, setSettings } = require('../lib/settings');
 const { sendTestNotification } = require('../lib/notifications');
+const { isOidcEnabled } = require('../middleware/oidc-auth');
 const fs = require('fs');
 const path = require('path');
 
@@ -144,7 +145,9 @@ router.delete('/deployments/:id', (req, res) => {
  */
 router.get('/users', (req, res) => {
   const users = db.prepare('SELECT id, username, display_name, email, role, created_at FROM users ORDER BY created_at').all();
-  res.json({ users });
+  // Tells the Admin panel whether email is admin-editable (see PUT
+  // /users/:id/email above — disabled once OIDC owns it).
+  res.json({ users, emailManagedByOidc: isOidcEnabled() });
 });
 
 /**
@@ -174,8 +177,20 @@ router.put('/users/:id/role', (req, res) => {
  * Set (or clear) a user's email address — used as the recipient for
  * release notifications (SMTP and Zulip both key off this same address).
  * Body: { email: string | null }
+ *
+ * Disabled while OIDC is configured: Keycloak is the source of truth for
+ * email there (synced automatically on every login — see
+ * routes/auth.js's oidc/callback), and it overwrites this column on the
+ * user's next sign-in regardless of what's set here. Allowing a manual
+ * edit that quietly reverts itself is worse than not offering one.
  */
 router.put('/users/:id/email', (req, res) => {
+  if (isOidcEnabled()) {
+    return res.status(400).json({
+      error: 'Email is managed by Keycloak (OIDC) and synced automatically on login — it cannot be set manually.',
+    });
+  }
+
   const { id } = req.params;
   const { email } = req.body;
 
