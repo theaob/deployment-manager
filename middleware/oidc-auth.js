@@ -1,6 +1,9 @@
-const { Issuer, generators } = require('openid-client');
+const { Issuer, generators, custom } = require('openid-client');
+const https = require('https');
+const fs = require('fs');
 
 let oidcClient = null;
+let httpDefaultsConfigured = false;
 
 /**
  * Returns true if OIDC authentication is enabled.
@@ -10,12 +13,55 @@ function isOidcEnabled() {
 }
 
 /**
+ * Configures the HTTPS agent used by openid-client for discovery, token,
+ * and userinfo requests, so a Keycloak instance on an internal/intranet CA
+ * (or a genuinely self-signed cert) can be trusted without disabling TLS
+ * verification process-wide.
+ *
+ * Environment variables:
+ *   OIDC_CA_CERT_PATH          — Path to a PEM CA certificate (or bundle) to trust,
+ *                                 in addition to Node's default trust store.
+ *   OIDC_TLS_REJECT_UNAUTHORIZED — Set to "false" to skip certificate verification
+ *                                 entirely. Only for internal/test environments —
+ *                                 prefer OIDC_CA_CERT_PATH whenever possible.
+ */
+function configureHttpDefaults() {
+  if (httpDefaultsConfigured) {
+    return;
+  }
+  httpDefaultsConfigured = true;
+
+  const caCertPath = process.env.OIDC_CA_CERT_PATH;
+  const rejectUnauthorized = process.env.OIDC_TLS_REJECT_UNAUTHORIZED !== 'false';
+
+  // Nothing to customize — use Node's default HTTPS behavior.
+  if (!caCertPath && rejectUnauthorized) {
+    return;
+  }
+
+  const agentOptions = { rejectUnauthorized };
+  if (caCertPath) {
+    console.log(`[OIDC] Trusting CA certificate at: ${caCertPath}`);
+    agentOptions.ca = fs.readFileSync(caCertPath);
+  }
+  if (!rejectUnauthorized) {
+    console.warn('[OIDC] WARNING: OIDC_TLS_REJECT_UNAUTHORIZED=false — TLS certificate verification is DISABLED for the OIDC provider. Do not use this in production.');
+  }
+
+  custom.setHttpOptionsDefaults({
+    agent: { https: new https.Agent(agentOptions) },
+  });
+}
+
+/**
  * Discovers and returns the cached OIDC client instance.
  */
 async function getOidcClient() {
   if (!isOidcEnabled()) {
     throw new Error('OIDC_ISSUER is not configured');
   }
+
+  configureHttpDefaults();
 
   if (oidcClient) {
     return oidcClient;

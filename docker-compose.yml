@@ -44,6 +44,11 @@ services:
       # - OIDC_CLIENT_ID=deployment-manager
       # - OIDC_REDIRECT_URI=http://localhost:3000/api/auth/oidc/callback
       # - OIDC_CLIENT_SECRET=your-client-secret (optional)
+      # If Keycloak's TLS cert is signed by an internal/intranet CA (or self-signed),
+      # mount the CA cert into the container and trust it explicitly:
+      # - OIDC_CA_CERT_PATH=/app/certs/ca.crt
+      # Only as a last resort for internal/test environments:
+      # - OIDC_TLS_REJECT_UNAUTHORIZED=false
 
     restart: unless-stopped
 
