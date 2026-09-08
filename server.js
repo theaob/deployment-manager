@@ -33,6 +33,7 @@ app.use('/api', (req, res, next) => {
   if (
     req.path === '/auth/login' ||
     req.path === '/auth/mode' ||
+    req.path === '/auth/logout' ||
     req.path === '/auth/oidc/login' ||
     req.path === '/auth/oidc/callback'
   ) {
