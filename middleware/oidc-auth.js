@@ -90,10 +90,16 @@ async function getOidcClient() {
     response_types: ['code'],
   };
 
-  // Only supply client_secret if configured (for confidential clients)
-  // Public clients do not require a secret.
+  // openid-client defaults token_endpoint_auth_method to 'client_secret_basic'
+  // regardless of whether a secret was supplied — for a public client
+  // (Keycloak "Client authentication: Off") that must be overridden to
+  // 'none', or the token exchange fails with
+  // "client_secret_basic client authentication method requires a client_secret"
+  // even though no secret was ever meant to be sent.
   if (clientSecret) {
     clientOptions.client_secret = clientSecret;
+  } else {
+    clientOptions.token_endpoint_auth_method = 'none';
   }
 
   oidcClient = new issuer.Client(clientOptions);

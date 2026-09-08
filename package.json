@@ -1,6 +1,6 @@
 {
   "name": "deployment-manager",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Web application for managing deployments across clusters",
   "main": "server.js",
   "scripts": {
