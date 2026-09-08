@@ -13,6 +13,11 @@ services:
       - PORT=3000
       - NODE_ENV=production
       - JWT_SECRET=change-this-to-a-secure-random-key-in-production
+      # Only set this to 'true' if the Nginx service below (or another
+      # reverse proxy) is what clients actually connect to — never if this
+      # container is reachable directly, since clients could then spoof the
+      # X-Forwarded-Proto/-For headers themselves.
+      # - TRUST_PROXY=true
 
       # ----------------------------------------------------
       # OPTION 1: Active Directory LDAP Bind Authentication

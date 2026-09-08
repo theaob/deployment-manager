@@ -100,7 +100,8 @@ The following environment variables can be set to configure the server's basic b
 |----------|----------|---------|-------------|
 | `PORT` | No | `3000` | The port the application server listens on. |
 | `JWT_SECRET` | No (recommended for prod) | `deployment-manager-secret-key-change-in-production` | Secret key used to sign and verify JSON Web Tokens (JWT). |
-| `NODE_ENV` | No | `development` / `production` | Node environment state (e.g. `production` enables secure cookies for OIDC callbacks). |
+| `NODE_ENV` | No | `development` / `production` | Node environment state. |
+| `TRUST_PROXY` | No | `true` | Set to `true` only when a reverse proxy (e.g. the bundled Nginx service) sits in front of this container and terminates TLS. Makes the app honor `X-Forwarded-Proto`/`X-Forwarded-For` so OIDC cookies get the `Secure` flag only when the client actually connected over HTTPS. **Do not enable this if clients can reach the container directly** — without a real proxy in front, a client could spoof these headers itself. |
 
 ### Active Directory Authentication
 
@@ -180,7 +181,7 @@ To enable OIDC, set the following environment variables:
 
 > **Certificate errors:** If OIDC login fails with `self-signed certificate in certificate chain`, Node doesn't trust the CA that issued Keycloak's TLS certificate. Export that CA's certificate as PEM, mount it into the container, and set `OIDC_CA_CERT_PATH` to its path — this trusts your CA specifically rather than disabling verification.
 
-> **"State parameter mismatch or verification session expired":** This means the `oidc_state`/`oidc_code_verifier` cookies set at `/api/auth/oidc/login` never made it back on the callback request. The app marks these cookies `Secure` whenever it's reached over HTTPS (directly, or via `X-Forwarded-Proto: https` from a reverse proxy) — if you're running plain HTTP on an internal network, that's already handled automatically and this error usually means something else stripped the cookie (a proxy not forwarding `Set-Cookie`, a different host/port between the login and callback requests, or the Keycloak login taking longer than the 5-minute cookie lifetime).
+> **"State parameter mismatch or verification session expired":** This means the `oidc_state`/`oidc_code_verifier` cookies set at `/api/auth/oidc/login` never made it back on the callback request. The app only marks these cookies `Secure` when the request actually arrived over HTTPS — directly, or via `X-Forwarded-Proto: https` from a reverse proxy *if you've set `TRUST_PROXY=true`*. Plain HTTP (with or without Nginx in front, as long as `TRUST_PROXY` isn't set) already works correctly out of the box. If you still see this error, check for: a proxy not forwarding `Set-Cookie` back to the client, a different host/port between the login and callback requests, or the Keycloak login taking longer than the 5-minute cookie lifetime.
 
 #### Keycloak Client Configuration:
 1. Create a client with ID `deployment-manager` (or matching `OIDC_CLIENT_ID`).

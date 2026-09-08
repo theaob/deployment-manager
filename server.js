@@ -8,10 +8,16 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust the Nginx reverse proxy's X-Forwarded-* headers (one hop) so
-// req.protocol/req.secure reflect the client-facing scheme rather than the
-// plain-HTTP connection Nginx makes to this container.
-app.set('trust proxy', 1);
+// Trust one hop of X-Forwarded-* headers so req.protocol/req.secure reflect
+// the client-facing scheme when a reverse proxy (e.g. the bundled Nginx
+// service) terminates TLS in front of this container.
+//
+// Only enable this if clients truly cannot reach this container directly —
+// with no proxy in front, any client could spoof X-Forwarded-Proto/-For
+// headers itself and Express would believe them.
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 // Middleware
 app.use(cors());
