@@ -61,20 +61,35 @@ router.post('/:id/reserve', (req, res) => {
     ).run(reservationId, id, deployment.cluster_id, userId, notes || null, expiresAt);
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
-      // deployment_id is known-good (just fetched above); the two other
-      // realistic causes are a deployment whose cluster_id points at a
-      // cluster that no longer exists (a data-integrity issue — see the
-      // foreign_key_check warning logged at startup), or a JWT for a user
-      // that's since been removed from the database. Either way this is
-      // not something the user did wrong, so don't blame their input.
+      // deployment_id is known-good (just fetched above). Figure out which
+      // of the other two is actually missing so the response — and the
+      // fix — matches the real cause instead of a generic guess.
+      const userExists = !!db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId);
+      const clusterExists = !!db.prepare('SELECT 1 FROM clusters WHERE id = ?').get(deployment.cluster_id);
+
       console.error('[data-integrity] Reservation insert failed a foreign key check:', {
         deploymentId: id,
         clusterId: deployment.cluster_id,
+        clusterExists,
         userId,
+        userExists,
         message: err.message,
       });
+
+      if (!userExists) {
+        // A JWT can carry a user_id that no longer exists — authMiddleware
+        // only checks the signature, it never re-confirms the user is
+        // still in the database (e.g. after data/ was reset while a
+        // browser held an old-but-unexpired token). Respond 401 so the
+        // frontend's existing "session expired" handling takes over: it
+        // clears local storage and bounces to the login screen, where
+        // signing back in issues a fresh, valid token — no manual
+        // "log out and back in" instruction needed.
+        return res.status(401).json({ error: 'Your session is no longer valid. Please sign in again.' });
+      }
+
       return res.status(500).json({
-        error: 'Could not create the reservation due to a data integrity issue (a referenced cluster or user no longer exists). Please contact an administrator.',
+        error: 'Could not create the reservation due to a data integrity issue (this deployment references a cluster that no longer exists). Please contact an administrator.',
       });
     }
     throw err;
