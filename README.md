@@ -6,7 +6,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 
 - **Lightweight**: Built with Node.js and SQLite - no heavy database required.
 - **Simple Authentication**: Log in with your name; first user becomes admin.
-- **Active Directory Support**: Optionally authenticate users against an AD/LDAP server.
+- **SSO Support**: Trusted-header SSO or Keycloak/OpenID Connect for centralized authentication.
 - **Cluster Management**: Define clusters and the deployments within them.
 - **Reservation System**:
   - Users can reserve any deployment.
@@ -103,42 +103,7 @@ The following environment variables can be set to configure the server's basic b
 | `NODE_ENV` | No | `development` / `production` | Node environment state. |
 | `TRUST_PROXY` | No | `true` | Set to `true` only when a reverse proxy (e.g. the bundled Nginx service) sits in front of this container and terminates TLS. Makes the app honor `X-Forwarded-Proto`/`X-Forwarded-For` so OIDC cookies get the `Secure` flag only when the client actually connected over HTTPS. **Do not enable this if clients can reach the container directly** — without a real proxy in front, a client could spoof these headers itself. |
 
-### Active Directory Authentication
-
-By default, the app uses a simple username-based login (no password). To enable Active Directory authentication, set the following environment variables:
-
-| Variable | Required | Example | Description |
-|----------|----------|---------|-------------|
-| `AD_URL` | Yes | `ldap://10.0.1.50:389` | LDAP/AD server URL. Use `ldaps://` for TLS. |
-| `AD_DOMAIN` | Yes | `CORP` | NetBIOS domain name (prepended as `CORP\username`). |
-| `AD_BASE_DN` | No | `DC=corp,DC=local` | Base DN for user searches (reserved for future use). |
-| `AD_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to accept self-signed TLS certs. |
-
-**Example** (native):
-```bash
-AD_URL=ldap://10.0.1.50:389 AD_DOMAIN=CORP npm start
-```
-
-**Example** (Docker):
-```bash
-docker run -p 3000:3000 \
-  -e AD_URL=ldaps://ad.corp.local:636 \
-  -e AD_DOMAIN=CORP \
-  --name dm deployment-manager
-```
-
-**Example** (Kubernetes):
-```yaml
-env:
-  - name: AD_URL
-    value: "ldap://ad-server.corp.svc.cluster.local:389"
-  - name: AD_DOMAIN
-    value: "CORP"
-```
-
-When `AD_URL` is set, the login page will show both a username and password field. Users authenticate against the AD server via LDAP bind. When `AD_URL` is not set, the app falls back to the original username-only login (useful for local development).
-
-> **Security note:** When using `ldap://` (unencrypted), passwords are sent in plaintext to the LDAP server. Use `ldaps://` in production, or ensure the connection is over a trusted private network.
+By default, the app uses a simple username-based login (no password) — the first user to sign in becomes admin. This is the fallback whenever neither Trusted Header SSO nor OIDC below is configured.
 
 ### Trusted Header SSO (Single Sign-On)
 
@@ -166,7 +131,7 @@ When `SSO_HEADER` is set, the application will automatically sign in users using
 
 ### Keycloak / OpenID Connect (OIDC) SSO
 
-You can offload authentication to a Keycloak realm or any OpenID Connect (OIDC) identity provider. When OIDC is configured, the login screen displays a "Sign In with Keycloak" button which redirects the user to your realm login page.
+You can offload authentication to a Keycloak realm or any OpenID Connect (OIDC) identity provider. When OIDC is configured, the login screen displays only a "Sign In with Keycloak" button — there is no manual username fallback. Keycloak becomes the sole source of identity: `POST /api/auth/login` rejects any manually-typed username outright (`403 Manual login is disabled`), so every user must authenticate through your realm.
 
 To enable OIDC, set the following environment variables:
 
@@ -228,7 +193,7 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 
 | Method | Path | Public | Description |
 |--------|------|--------|-------------|
-| `GET` | `/api/auth/mode` | Yes | Returns the current active auth mode (`local`, `ad`, `sso`, `oidc`). |
+| `GET` | `/api/auth/mode` | Yes | Returns the current active auth mode (`local`, `sso`, `oidc`). |
 | `POST` | `/api/auth/login` | Yes | Authenticates user (methods vary by mode). Returns a JWT token and user info. |
 | `GET` | `/api/auth/me` | No | Gets information about the currently logged-in user. |
 | `GET` | `/api/auth/oidc/login` | Yes | Redirects browser to Keycloak/OIDC provider to initiate SSO flow. |
