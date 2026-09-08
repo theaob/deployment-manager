@@ -262,6 +262,8 @@ If deployments are actually rolled out via Rancher — deploying a Helm/Catalog 
 
 A deployment with no mapping (or an unconfigured/disabled integration) simply shows no status badge — this is entirely opt-in, deployment by deployment. Status lookups are cached for 15 seconds to avoid hammering the Rancher API when multiple users have the dashboard open; a lookup that fails (wrong token, app renamed, Rancher unreachable) shows a "Rancher unavailable" badge rather than breaking the dashboard.
 
+When the deployed chart reports a version, it's shown right on the badge (e.g. "Deployed · v2.4.1") — the app's own version if the chart sets one, otherwise the chart's own packaging version as a fallback.
+
 If your Rancher instance is on an internal/self-signed CA (common on an intranet with no public internet access), see the `RANCHER_CA_CERT_PATH` / `RANCHER_TLS_REJECT_UNAUTHORIZED` environment variables above — same approach as the Keycloak/OIDC TLS configuration.
 
 ## API Reference
