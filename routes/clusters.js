@@ -8,6 +8,8 @@ const router = express.Router();
  * Returns all clusters with their deployments and current reservation status.
  */
 router.get('/', (req, res) => {
+  db.releaseExpiredReservations();
+
   const clusters = db.prepare('SELECT * FROM clusters ORDER BY name').all();
 
   const result = clusters.map(cluster => {
@@ -31,6 +33,7 @@ router.get('/', (req, res) => {
           username: activeReservation.username,
           display_name: activeReservation.display_name,
           reserved_at: activeReservation.reserved_at,
+          expires_at: activeReservation.expires_at,
           notes: activeReservation.notes,
         } : null,
       };
@@ -53,6 +56,8 @@ router.get('/', (req, res) => {
  * Returns a single cluster with its deployments.
  */
 router.get('/:clusterId', (req, res) => {
+  db.releaseExpiredReservations();
+
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(req.params.clusterId);
   if (!cluster) {
     return res.status(404).json({ error: 'Cluster not found' });

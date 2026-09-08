@@ -48,6 +48,7 @@ db.exec(`
     user_id TEXT NOT NULL,
     reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
     released_at TEXT,
+    expires_at TEXT,
     notes TEXT,
     FOREIGN KEY (deployment_id) REFERENCES deployments(id) ON DELETE CASCADE,
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
@@ -57,7 +58,36 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reservations_deployment ON reservations(deployment_id);
   CREATE INDEX IF NOT EXISTS idx_reservations_user ON reservations(user_id);
   CREATE INDEX IF NOT EXISTS idx_reservations_active ON reservations(deployment_id, released_at);
+  CREATE INDEX IF NOT EXISTS idx_reservations_expiry ON reservations(released_at, expires_at);
 `);
+
+// Migrate pre-existing databases that predate the expires_at column
+// (CREATE TABLE IF NOT EXISTS doesn't retroactively add columns).
+const reservationColumns = db.prepare("PRAGMA table_info(reservations)").all().map((c) => c.name);
+if (!reservationColumns.includes('expires_at')) {
+  db.exec('ALTER TABLE reservations ADD COLUMN expires_at TEXT');
+}
+
+/**
+ * Auto-releases any active reservation whose duration has elapsed.
+ * Called on startup, on a periodic interval, and defensively before
+ * reads/writes that depend on "is this deployment currently reserved".
+ * Reservations with no expires_at (no time limit) are never touched.
+ *
+ * @returns {number} Number of reservations released by this call.
+ */
+function releaseExpiredReservations() {
+  const result = db.prepare(`
+    UPDATE reservations
+    SET released_at = datetime('now')
+    WHERE released_at IS NULL
+      AND expires_at IS NOT NULL
+      AND expires_at <= datetime('now')
+  `).run();
+  return result.changes;
+}
+
+db.releaseExpiredReservations = releaseExpiredReservations;
 
 /**
  * Seeds the database with clusters from config/clusters.json
@@ -94,5 +124,8 @@ function seedFromConfig() {
 
 // Run seed on initialization
 seedFromConfig();
+
+// Catch up on any reservations that expired while the server was down
+releaseExpiredReservations();
 
 module.exports = db;

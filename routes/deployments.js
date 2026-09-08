@@ -4,15 +4,35 @@ const db = require('../db/database');
 
 const router = express.Router();
 
+// Sane upper bound on how long a single reservation can run for.
+const MAX_DURATION_MINUTES = 30 * 24 * 60; // 30 days
+
 /**
  * POST /api/deployments/:id/reserve
  * Reserve a deployment for the current user.
- * Body: { notes?: string }
+ * Body: { notes?: string, duration_minutes?: number }
+ *   duration_minutes — how long the reservation should last before it's
+ *   automatically released. Omit or pass null for no time limit.
  */
 router.post('/:id/reserve', (req, res) => {
   const { id } = req.params;
-  const { notes } = req.body;
+  const { notes, duration_minutes: durationMinutesRaw } = req.body;
   const userId = req.user.id;
+
+  db.releaseExpiredReservations();
+
+  // Validate duration_minutes, if provided
+  let expiresAt = null;
+  if (durationMinutesRaw !== undefined && durationMinutesRaw !== null && durationMinutesRaw !== '') {
+    const durationMinutes = Number(durationMinutesRaw);
+    if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
+      return res.status(400).json({ error: 'duration_minutes must be a positive whole number' });
+    }
+    if (durationMinutes > MAX_DURATION_MINUTES) {
+      return res.status(400).json({ error: `duration_minutes cannot exceed ${MAX_DURATION_MINUTES} (30 days)` });
+    }
+    expiresAt = db.prepare("SELECT datetime('now', ? || ' minutes') as t").get(`+${durationMinutes}`).t;
+  }
 
   // Check deployment exists
   const deployment = db.prepare('SELECT * FROM deployments WHERE id = ?').get(id);
@@ -35,13 +55,13 @@ router.post('/:id/reserve', (req, res) => {
   // Create reservation
   const reservationId = uuidv4();
   db.prepare(
-    'INSERT INTO reservations (id, deployment_id, cluster_id, user_id, notes) VALUES (?, ?, ?, ?, ?)'
-  ).run(reservationId, id, deployment.cluster_id, userId, notes || null);
+    'INSERT INTO reservations (id, deployment_id, cluster_id, user_id, notes, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(reservationId, id, deployment.cluster_id, userId, notes || null, expiresAt);
 
   const reservation = db.prepare(`
-    SELECT r.*, u.username, u.display_name 
-    FROM reservations r 
-    JOIN users u ON r.user_id = u.id 
+    SELECT r.*, u.username, u.display_name
+    FROM reservations r
+    JOIN users u ON r.user_id = u.id
     WHERE r.id = ?
   `).get(reservationId);
 
@@ -55,6 +75,7 @@ router.post('/:id/reserve', (req, res) => {
       username: reservation.username,
       display_name: reservation.display_name,
       reserved_at: reservation.reserved_at,
+      expires_at: reservation.expires_at,
       notes: reservation.notes,
     },
   });
@@ -124,6 +145,8 @@ router.get('/:id/history', (req, res) => {
  */
 router.get('/my-reservations/active', (req, res) => {
   const userId = req.user.id;
+
+  db.releaseExpiredReservations();
 
   const reservations = db.prepare(`
     SELECT r.*, d.name as deployment_name, c.name as cluster_name, c.environment,
