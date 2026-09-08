@@ -1,6 +1,6 @@
 {
   "name": "deployment-manager",
-  "version": "1.6.0",
+  "version": "1.7.2",
   "description": "Web application for managing deployments across clusters",
   "main": "server.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.1",
     "openid-client": "^5.6.4",
     "uuid": "^10.0.0"
   },

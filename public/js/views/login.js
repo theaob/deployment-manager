@@ -1,5 +1,5 @@
 /**
- * Login View — SPINEGO branded login screen
+ * Login View
  * Supports: "local" (username only) manual login, "sso" (trusted header)
  * with a manual fallback if the header is missing, and "oidc" (Keycloak) —
  * which has no manual fallback, since Keycloak is the sole identity source
@@ -15,7 +15,6 @@ const LoginView = {
           <div class="login-brand">
             <div class="login-logo">DM</div>
             <h1>Deployment Manager</h1>
-            <div class="subtitle">Powered by SPINEGO</div>
           </div>
           <form class="login-form" id="login-form" style="display:none;">
             <div class="input-group">
@@ -37,9 +36,6 @@ const LoginView = {
             <span class="spinner"></span>
             <p style="margin-top: 12px; color: var(--text-muted); font-size: 13px;">Checking authentication mode…</p>
           </div>
-          <p style="text-align: center; margin-top: 16px; font-size: 12px; color: var(--text-muted);">
-            First user to sign in becomes the administrator.
-          </p>
         </div>
       </div>
     `;
@@ -73,7 +69,7 @@ const LoginView = {
       } catch (err) {
         App.showToast(err.message || 'Login failed', 'error');
         btn.disabled = false;
-        btn.innerHTML = 'Sign In with SPINEGO';
+        btn.innerHTML = 'Sign In';
       }
     });
 
@@ -93,8 +89,8 @@ const LoginView = {
       const oidcCont = document.getElementById('oidc-container');
       if (oidcCont) oidcCont.remove();
 
-      usernameInput.placeholder = 'Enter your SPINEGO username';
-      btn.textContent = 'Sign In with SPINEGO';
+      usernameInput.placeholder = 'Enter your username';
+      btn.textContent = 'Sign In';
 
       // Show the form, hide the loading indicator
       loading.style.display = 'none';
@@ -145,7 +141,12 @@ const LoginView = {
       // No manual fallback here on purpose: Keycloak is the sole identity
       // source in this mode, so there is no "type any username" option —
       // the backend rejects it outright even if one were shown.
-      loading.style.display = 'none';
+      //
+      // Auto-redirect immediately rather than waiting for a click — if the
+      // browser already has an active Keycloak session, this bounces the
+      // user straight back in without ever showing a login screen, the
+      // same way "sso" mode logs in without any interaction.
+      loading.querySelector('p').textContent = 'Redirecting to Keycloak…';
       const card = document.querySelector('.login-card');
       const oidcDiv = document.createElement('div');
       oidcDiv.id = 'oidc-container';
@@ -153,19 +154,20 @@ const LoginView = {
       oidcDiv.style.padding = '12px 0';
       oidcDiv.innerHTML = `
         <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
-          Sign in securely using your Keycloak credentials.
+          Click below if you're not redirected automatically.
         </p>
         <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
           🔑 Sign In with Keycloak
         </a>
       `;
       card.appendChild(oidcDiv);
+      window.location.href = '/api/auth/oidc/login';
       return;
     }
 
     // Local mode
-    usernameInput.placeholder = 'Enter your SPINEGO username';
-    btn.textContent = 'Sign In with SPINEGO';
+    usernameInput.placeholder = 'Enter your username';
+    btn.textContent = 'Sign In';
 
     // Show the form, hide the loading indicator
     loading.style.display = 'none';

@@ -16,14 +16,25 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// Create tables
+// Create tables. Deliberately no indexes here yet — some reference columns
+// added by the migration step below, and CREATE INDEX (unlike CREATE TABLE)
+// has no "IF NOT EXISTS"-style tolerance for a column that doesn't exist
+// yet on a pre-existing table. Creating them before that migration runs
+// would throw "no such column" and crash startup on any database from
+// before that column existed.
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
+    email TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
   );
 
   CREATE TABLE IF NOT EXISTS clusters (
@@ -54,19 +65,28 @@ db.exec(`
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+`);
 
+// Migrate pre-existing databases that predate the expires_at/email columns
+// (CREATE TABLE IF NOT EXISTS doesn't retroactively add columns to a table
+// that already exists). Must run before any index touching these columns.
+const reservationColumns = db.prepare("PRAGMA table_info(reservations)").all().map((c) => c.name);
+if (!reservationColumns.includes('expires_at')) {
+  db.exec('ALTER TABLE reservations ADD COLUMN expires_at TEXT');
+}
+const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+if (!userColumns.includes('email')) {
+  db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+}
+
+// Indexes — safe now that every column they reference is guaranteed to
+// exist, whether this is a fresh database or one just migrated above.
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reservations_deployment ON reservations(deployment_id);
   CREATE INDEX IF NOT EXISTS idx_reservations_user ON reservations(user_id);
   CREATE INDEX IF NOT EXISTS idx_reservations_active ON reservations(deployment_id, released_at);
   CREATE INDEX IF NOT EXISTS idx_reservations_expiry ON reservations(released_at, expires_at);
 `);
-
-// Migrate pre-existing databases that predate the expires_at column
-// (CREATE TABLE IF NOT EXISTS doesn't retroactively add columns).
-const reservationColumns = db.prepare("PRAGMA table_info(reservations)").all().map((c) => c.name);
-if (!reservationColumns.includes('expires_at')) {
-  db.exec('ALTER TABLE reservations ADD COLUMN expires_at TEXT');
-}
 
 /**
  * Auto-releases any active reservation whose duration has elapsed.
@@ -74,17 +94,34 @@ if (!reservationColumns.includes('expires_at')) {
  * reads/writes that depend on "is this deployment currently reserved".
  * Reservations with no expires_at (no time limit) are never touched.
  *
- * @returns {number} Number of reservations released by this call.
+ * Returns the full rows that were just released (joined with the owning
+ * user, deployment, and cluster) so callers can act on them — e.g. to
+ * send a release notification — without a second round-trip.
+ *
+ * @returns {Array<object>} The reservations released by this call.
  */
 function releaseExpiredReservations() {
-  const result = db.prepare(`
-    UPDATE reservations
-    SET released_at = datetime('now')
-    WHERE released_at IS NULL
-      AND expires_at IS NOT NULL
-      AND expires_at <= datetime('now')
-  `).run();
-  return result.changes;
+  const expired = db.prepare(`
+    SELECT r.*, u.username AS owner_username, u.display_name AS owner_display_name, u.email AS owner_email,
+           d.name AS deployment_name, c.name AS cluster_name
+    FROM reservations r
+    JOIN users u ON r.user_id = u.id
+    JOIN deployments d ON r.deployment_id = d.id
+    JOIN clusters c ON r.cluster_id = c.id
+    WHERE r.released_at IS NULL
+      AND r.expires_at IS NOT NULL
+      AND r.expires_at <= datetime('now')
+  `).all();
+
+  if (expired.length > 0) {
+    const releaseStmt = db.prepare("UPDATE reservations SET released_at = datetime('now') WHERE id = ?");
+    const releaseTransaction = db.transaction((rows) => {
+      for (const row of rows) releaseStmt.run(row.id);
+    });
+    releaseTransaction(expired);
+  }
+
+  return expired;
 }
 
 db.releaseExpiredReservations = releaseExpiredReservations;
@@ -125,7 +162,9 @@ function seedFromConfig() {
 // Run seed on initialization
 seedFromConfig();
 
-// Catch up on any reservations that expired while the server was down
-releaseExpiredReservations();
+// Note: the startup catch-up sweep for expired reservations lives in
+// server.js (via lib/notifications' sweepExpiredReservations), not here —
+// notifications need to read from this module, so triggering the sweep
+// from here would create a circular require.
 
 module.exports = db;
