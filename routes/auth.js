@@ -3,34 +3,29 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { JWT_SECRET } = require('../middleware/auth');
-const { isAdEnabled, authenticateWithLDAP } = require('../middleware/ldap-auth');
 const { isOidcEnabled, getOidcClient, generators } = require('../middleware/oidc-auth');
 
 const router = express.Router();
 
 /**
  * GET /api/auth/mode
- * Returns the current authentication mode so the frontend knows
- * whether to show a password field or auto-login.
+ * Returns the current authentication mode so the frontend knows whether to
+ * show the manual login form or attempt SSO/OIDC auto-login.
  */
 router.get('/mode', (req, res) => {
   const oidcEnabled = isOidcEnabled();
   const ssoEnabled = !!process.env.SSO_HEADER;
-  const adEnabled = isAdEnabled();
-  
+
   let mode = 'local';
   if (oidcEnabled) {
     mode = 'oidc';
   } else if (ssoEnabled) {
     mode = 'sso';
-  } else if (adEnabled) {
-    mode = 'ad';
   }
 
   res.json({
     mode,
-    fallbackMode: (ssoEnabled || oidcEnabled) ? 'ad' : (adEnabled ? 'ad' : 'local'),
-    adEnabled,
+    fallbackMode: 'local',
     oidcEnabled,
     ssoEnabled
   });
@@ -41,59 +36,31 @@ router.get('/mode', (req, res) => {
  * Logs in (or registers) a user.
  *
  * SSO mode:    Reads username from the proxy-injected HTTP header specified by SSO_HEADER.
- *              Falls back to manual login (local/AD) if header is missing/empty and a body username is provided.
+ *              Falls back to manual (local) login if header is missing/empty and a body username is provided.
  * Local mode:  Body: { username: string }
- * AD mode:     Body: { username: string, password: string }
  */
 router.post('/login', async (req, res) => {
   let username = req.body.username;
-  const password = req.body.password;
   const ssoHeaderName = process.env.SSO_HEADER;
-  let isManualFallback = false;
 
   if (ssoHeaderName) {
     // Header keys are lowercased by Express/Node
     const ssoUser = req.headers[ssoHeaderName.toLowerCase()];
     if (ssoUser && typeof ssoUser === 'string' && ssoUser.trim().length > 0) {
       username = ssoUser;
-    } else {
-      // SSO header is missing/empty. Check if client is trying to log in manually as fallback.
-      if (username && typeof username === 'string' && username.trim().length > 0) {
-        isManualFallback = true;
-      } else {
-        return res.status(401).json({
-          error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
-        });
-      }
+    } else if (!username || typeof username !== 'string' || username.trim().length === 0) {
+      // SSO header is missing/empty and no manual fallback username was given.
+      return res.status(401).json({
+        error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
+      });
     }
-  } else {
+  } else if (!username || typeof username !== 'string' || username.trim().length === 0) {
     // Standard login validation
-    if (!username || typeof username !== 'string' || username.trim().length === 0) {
-      return res.status(400).json({ error: 'Username is required' });
-    }
+    return res.status(400).json({ error: 'Username is required' });
   }
 
   const cleanUsername = username.trim().toLowerCase();
   const displayName = username.trim();
-
-  // --- Validate credentials via LDAP bind (if AD is enabled or manual SSO fallback is used) ---
-  const isAdManual = !ssoHeaderName && isAdEnabled();
-  const isSsoManualFallback = ssoHeaderName && isManualFallback;
-
-  if (isAdManual || isSsoManualFallback) {
-    if (!isAdEnabled()) {
-      return res.status(400).json({ error: 'Active Directory authentication is not configured on this server.' });
-    }
-
-    if (!password) {
-      return res.status(400).json({ error: 'Password is required for Active Directory login' });
-    }
-
-    const result = await authenticateWithLDAP(cleanUsername, password);
-    if (!result.success) {
-      return res.status(401).json({ error: result.error });
-    }
-  }
 
   // --- Lookup or auto-register user ---
   let user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);

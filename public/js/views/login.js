@@ -1,8 +1,7 @@
 /**
  * Login View — SPINEGO branded login screen
- * Supports two modes:
- *   - "ad"    → username + password (validated against Active Directory via LDAP)
- *   - "local" → username only (no password, current behaviour)
+ * Supports: "local" (username only) manual login, plus automatic
+ * "sso" (trusted header) and "oidc" (Keycloak) modes with a manual fallback.
  */
 const LoginView = {
   authMode: null,
@@ -28,16 +27,6 @@ const LoginView = {
                 required
               />
             </div>
-            <div class="input-group" id="password-group" style="display:none;">
-              <label for="password-input">Password</label>
-              <input
-                type="password"
-                id="password-input"
-                placeholder="Enter your password"
-                autocomplete="current-password"
-                required
-              />
-            </div>
             <button type="submit" class="btn btn-primary btn-lg btn-block" id="login-btn">
               Sign In
             </button>
@@ -57,8 +46,6 @@ const LoginView = {
   async afterRender() {
     const form = document.getElementById('login-form');
     const usernameInput = document.getElementById('username-input');
-    const passwordGroup = document.getElementById('password-group');
-    const passwordInput = document.getElementById('password-input');
     const btn = document.getElementById('login-btn');
     const loading = document.getElementById('login-loading');
 
@@ -72,18 +59,9 @@ const LoginView = {
       btn.innerHTML = '<span class="spinner"></span> Signing in…';
 
       try {
-        const body = { username };
-        const activeManualMode = (this.authMode === 'sso' || this.authMode === 'oidc') 
-          ? this.fallbackMode 
-          : this.authMode;
-
-        if (activeManualMode === 'ad') {
-          body.password = passwordInput.value;
-        }
-
         const data = await App.api('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: JSON.stringify({ username }),
           noAuth: true,
         });
 
@@ -93,13 +71,7 @@ const LoginView = {
       } catch (err) {
         App.showToast(err.message || 'Login failed', 'error');
         btn.disabled = false;
-        const activeManualMode = (this.authMode === 'sso' || this.authMode === 'oidc') 
-          ? this.fallbackMode 
-          : this.authMode;
-
-        btn.innerHTML = activeManualMode === 'ad'
-          ? 'Sign In with Active Directory'
-          : 'Sign In with SPINEGO';
+        btn.innerHTML = 'Sign In with SPINEGO';
       }
     });
 
@@ -107,11 +79,9 @@ const LoginView = {
     try {
       const data = await App.api('/api/auth/mode', { noAuth: true });
       this.authMode = data.mode;
-      this.fallbackMode = data.fallbackMode || 'local';
     } catch {
       // Default to local mode if the endpoint is unreachable
       this.authMode = 'local';
-      this.fallbackMode = 'local';
     }
 
     const switchToManual = () => {
@@ -121,18 +91,8 @@ const LoginView = {
       const oidcCont = document.getElementById('oidc-container');
       if (oidcCont) oidcCont.remove();
 
-      // Configure the manual form based on fallbackMode
-      if (this.fallbackMode === 'ad') {
-        usernameInput.placeholder = 'Enter your Active Directory username';
-        passwordGroup.style.display = '';
-        passwordInput.required = true;
-        btn.textContent = 'Sign In with Active Directory';
-      } else {
-        usernameInput.placeholder = 'Enter your SPINEGO username';
-        passwordGroup.style.display = 'none';
-        passwordInput.required = false;
-        btn.textContent = 'Sign In with SPINEGO';
-      }
+      usernameInput.placeholder = 'Enter your SPINEGO username';
+      btn.textContent = 'Sign In with SPINEGO';
 
       // Show the form, hide the loading indicator
       loading.style.display = 'none';
@@ -205,17 +165,9 @@ const LoginView = {
       return;
     }
 
-    if (this.authMode === 'ad') {
-      usernameInput.placeholder = 'Enter your Active Directory username';
-      passwordGroup.style.display = '';
-      passwordInput.required = true;
-      btn.textContent = 'Sign In with Active Directory';
-    } else {
-      usernameInput.placeholder = 'Enter your SPINEGO username';
-      passwordGroup.style.display = 'none';
-      passwordInput.required = false;
-      btn.textContent = 'Sign In with SPINEGO';
-    }
+    // Local mode
+    usernameInput.placeholder = 'Enter your SPINEGO username';
+    btn.textContent = 'Sign In with SPINEGO';
 
     // Show the form, hide the loading indicator
     loading.style.display = 'none';
