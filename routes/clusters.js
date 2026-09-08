@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { sweepExpiredReservations } = require('../lib/notifications');
+const { attachRancherStatuses } = require('../lib/rancher');
 
 const router = express.Router();
 
@@ -8,7 +9,7 @@ const router = express.Router();
  * GET /api/clusters
  * Returns all clusters with their deployments and current reservation status.
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   sweepExpiredReservations();
 
   const clusters = db.prepare('SELECT * FROM clusters ORDER BY name').all();
@@ -49,6 +50,8 @@ router.get('/', (req, res) => {
     };
   });
 
+  await attachRancherStatuses(result);
+
   res.json({ clusters: result });
 });
 
@@ -56,7 +59,7 @@ router.get('/', (req, res) => {
  * GET /api/clusters/:clusterId
  * Returns a single cluster with its deployments.
  */
-router.get('/:clusterId', (req, res) => {
+router.get('/:clusterId', async (req, res) => {
   sweepExpiredReservations();
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(req.params.clusterId);
@@ -88,13 +91,17 @@ router.get('/:clusterId', (req, res) => {
     };
   });
 
-  res.json({
+  const result = {
     ...cluster,
     deployments: deploymentsWithStatus,
     total: deployments.length,
     available: deploymentsWithStatus.filter(d => d.status === 'available').length,
     reserved: deploymentsWithStatus.filter(d => d.status === 'reserved').length,
-  });
+  };
+
+  await attachRancherStatuses([result]);
+
+  res.json(result);
 });
 
 module.exports = router;

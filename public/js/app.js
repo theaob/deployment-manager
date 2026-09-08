@@ -289,6 +289,42 @@ const App = {
     if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
     return words.slice(0, max).map((w) => w[0].toUpperCase()).join('');
   },
+
+  /**
+   * Renders a small pill showing a deployment's live Rancher app status
+   * (see lib/rancher.js — `status` is what GET /api/clusters attaches as
+   * `deployment.rancher_status` for a mapped deployment). Shared between
+   * the Dashboard and Admin views.
+   *
+   * `status.ok === false` means the lookup itself failed (Rancher
+   * unreachable, bad auth, app not found, ...) — shown as a distinct
+   * "unavailable" pill with the error as a tooltip, rather than guessing.
+   */
+  renderRancherBadge(status) {
+    if (!status) return '';
+
+    if (status.ok === false) {
+      return `<span class="rancher-badge rancher-unavailable" title="${this.escapeHtml(status.error || 'Rancher status unavailable')}">⚠ Rancher unavailable</span>`;
+    }
+
+    const state = status.state || 'unknown';
+    let cls = 'rancher-unknown';
+    let label = state;
+
+    if (status.transitioning) {
+      cls = 'rancher-transitioning';
+      label = `${state}…`;
+    } else if (status.error || state === 'failed') {
+      cls = 'rancher-failed';
+      label = 'Failed';
+    } else if (state === 'deployed') {
+      cls = 'rancher-deployed';
+      label = 'Deployed';
+    }
+
+    const title = status.message ? `Rancher: ${state} — ${status.message}` : `Rancher app status: ${state}`;
+    return `<span class="rancher-badge ${cls}" title="${this.escapeHtml(title)}">● ${this.escapeHtml(label)}</span>`;
+  },
 };
 
 // Boot the app

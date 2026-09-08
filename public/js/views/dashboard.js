@@ -203,6 +203,7 @@ const DashboardView = {
           <span class="deployment-name" title="${this.escapeHtml(dep.name)}">${this.escapeHtml(dep.name)}</span>
         </div>
         <div class="deployment-meta">
+          ${dep.rancher_status ? App.renderRancherBadge(dep.rancher_status) : ''}
           ${isReserved ? `
             <span class="reserved-by">
               <span class="user-icon">${App.getInitials(dep.reservation.display_name)}</span>

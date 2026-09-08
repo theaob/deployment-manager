@@ -14,6 +14,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
   - Admins can see all reservations across all deployments, and force-release any of them.
   - Users can see their own history.
 - **Release Notifications**: Optional email (SMTP) and Zulip DM to a user when someone else releases their reservation for them — configured live from the Admin panel.
+- **Rancher Integration**: Shows the live status of the Rancher Helm app each deployment corresponds to, right on the dashboard — configured live from the Admin panel.
 - **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
 
 ## Prerequisites
@@ -141,6 +142,8 @@ The following environment variables can be set to configure the server's basic b
 | `JWT_SECRET` | No (recommended for prod) | `deployment-manager-secret-key-change-in-production` | Secret key used to sign and verify JSON Web Tokens (JWT). |
 | `NODE_ENV` | No | `development` / `production` | Node environment state. |
 | `TRUST_PROXY` | No | `true` | Set to `true` only when a reverse proxy (e.g. the bundled Nginx service) sits in front of this container and terminates TLS. Makes the app honor `X-Forwarded-Proto`/`X-Forwarded-For` so OIDC cookies get the `Secure` flag only when the client actually connected over HTTPS. **Do not enable this if clients can reach the container directly** — without a real proxy in front, a client could spoof these headers itself. |
+| `RANCHER_CA_CERT_PATH` | No | `/certs/rancher-ca.pem` | Path to a PEM CA certificate (or bundle) to trust when calling the Rancher API — for a Rancher instance on an internal/self-signed CA (see [Rancher Integration](#rancher-integration) below). |
+| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification for the Rancher API entirely. Internal/test environments only — prefer `RANCHER_CA_CERT_PATH`. |
 
 By default, the app uses a simple username-based login (no password) — the first user to sign in becomes admin. This is the fallback whenever neither Trusted Header SSO nor OIDC below is configured.
 
@@ -224,6 +227,7 @@ Admins have access to an "Admin" section:
 - **History**: A complete audit log of all reservations ever made, filterable by deployment or user.
 - **Cluster Management**: Add or remove clusters and deployments manually.
 - **Release Notifications**: Configure SMTP and/or Zulip, editable at runtime (unlike the auth-provider settings, these aren't environment variables — see below).
+- **Rancher Integration**: Configure the Rancher URL/API token, and map each cluster/deployment to the Rancher app it corresponds to (see below).
 
 ### Release Notifications
 
@@ -239,6 +243,26 @@ Both channels send to the same address: the recipient's **email**, set per-user 
 Passwords and API keys are stored in the database, never echoed back by `GET /api/admin/settings` (only whether one is set) — leave the field blank when saving to keep the current secret. Use **Send Test Notification** to verify your configuration; it sends a test message to your own admin account's email (so make sure that's set too).
 
 > These settings live in the database and are editable from the Admin panel at runtime — unlike `OIDC_*`/`AD_*`/`SSO_HEADER`, there's no environment variable equivalent.
+
+### Rancher Integration
+
+If deployments are actually rolled out via Rancher — deploying a Helm/Catalog app under **Apps & Marketplace** — the dashboard can show that app's live status (Deployed, Failed, or a transitioning state like Upgrading) right next to each deployment, without leaving this tool.
+
+**1. Create a Rancher API token.** In Rancher, go to your user avatar (top right) → **Account & API Keys** → **Create API Key**. Copy the generated token.
+
+**2. Configure the connection.** From **Admin → Rancher Integration**:
+- Check **Show Rancher app status on the dashboard**.
+- **Rancher URL**: your Rancher server's base URL, e.g. `https://rancher.example.com`.
+- **API Token**: the token from step 1.
+- Click **Test Connection** to verify.
+
+**3. Map each cluster to its Rancher cluster.** Under **Admin → Clusters & Deployments**, each cluster has a **Rancher cluster ID** field — the Rancher-internal cluster id (e.g. `c-m-abc12345`, or `local` for the Rancher server's own local cluster), visible in the Rancher UI's URL when you're viewing that cluster.
+
+**4. Map each deployment to its Rancher app.** Each deployment has **namespace** and **Rancher app name** fields — the namespace and release name shown in Rancher under that cluster's **Apps & Marketplace → Installed Apps**.
+
+A deployment with no mapping (or an unconfigured/disabled integration) simply shows no status badge — this is entirely opt-in, deployment by deployment. Status lookups are cached for 15 seconds to avoid hammering the Rancher API when multiple users have the dashboard open; a lookup that fails (wrong token, app renamed, Rancher unreachable) shows a "Rancher unavailable" badge rather than breaking the dashboard.
+
+If your Rancher instance is on an internal/self-signed CA (common on an intranet with no public internet access), see the `RANCHER_CA_CERT_PATH` / `RANCHER_TLS_REJECT_UNAUTHORIZED` environment variables above — same approach as the Keycloak/OIDC TLS configuration.
 
 ## API Reference
 
@@ -270,16 +294,18 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/admin/clusters` | Creates a new cluster. Body: `{ name: string, environment: string }`. |
-| `PUT` | `/api/admin/clusters/:id` | Updates a cluster's name or environment. Body: `{ name?: string, environment?: string }`. |
+| `PUT` | `/api/admin/clusters/:id` | Updates a cluster's name, environment, or Rancher cluster ID mapping. Body: `{ name?: string, environment?: string, rancher_cluster_id?: string \| null }`. |
 | `DELETE` | `/api/admin/clusters/:id` | Deletes a cluster and its deployments (requires all deployments to be unreserved). |
 | `POST` | `/api/admin/clusters/:id/deployments` | Adds a deployment to a cluster. Body: `{ name: string }`. |
 | `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (requires it to be unreserved). |
+| `PUT` | `/api/admin/deployments/:id/rancher` | Maps (or clears) the Rancher app this deployment corresponds to. Body: `{ rancher_namespace?: string \| null, rancher_app_name?: string \| null }`. |
 | `GET` | `/api/admin/users` | Lists all registered users. |
 | `PUT` | `/api/admin/users/:id/role` | Updates a user's role. Body: `{ role: 'admin' \| 'user' }`. |
 | `PUT` | `/api/admin/users/:id/email` | Sets (or clears) a user's email address. Body: `{ email: string \| null }`. |
-| `GET` | `/api/admin/settings` | Returns the current SMTP/Zulip notification settings. Secret fields are never echoed back — only `smtp_pass_set`/`zulip_bot_api_key_set` booleans. |
-| `PUT` | `/api/admin/settings` | Updates SMTP/Zulip notification settings. Omit or send an empty `smtp_pass`/`zulip_bot_api_key` to keep the currently stored secret. |
+| `GET` | `/api/admin/settings` | Returns the current SMTP/Zulip/Rancher settings. Secret fields are never echoed back — only `smtp_pass_set`/`zulip_bot_api_key_set`/`rancher_api_token_set` booleans. |
+| `PUT` | `/api/admin/settings` | Updates SMTP/Zulip/Rancher settings. Omit or send an empty secret field to keep the currently stored value. |
 | `POST` | `/api/admin/settings/test` | Sends a test notification through every enabled channel to the requesting admin's own email. |
+| `POST` | `/api/admin/settings/test-rancher` | Verifies the configured Rancher URL/API token work, independent of any cluster/app mapping. |
 | `GET` | `/api/admin/history` | Gets full reservation history across all deployments. Query params: `cluster_id`, `user_id`, `limit`, `offset`. |
 
 

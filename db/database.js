@@ -52,6 +52,12 @@ db.exec(`
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
   );
 
+  -- rancher_cluster_id / rancher_namespace / rancher_app_name (added via the
+  -- ALTER TABLE migration below) map a cluster/deployment pair to the
+  -- Rancher Helm/Catalog app (catalog.cattle.io.apps) it corresponds to, so
+  -- its live status can be looked up via the Rancher API. Optional — a
+  -- deployment with no mapping simply shows no Rancher status.
+
   CREATE TABLE IF NOT EXISTS reservations (
     id TEXT PRIMARY KEY,
     deployment_id TEXT NOT NULL,
@@ -77,6 +83,17 @@ if (!reservationColumns.includes('expires_at')) {
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 if (!userColumns.includes('email')) {
   db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+}
+const clusterColumns = db.prepare("PRAGMA table_info(clusters)").all().map((c) => c.name);
+if (!clusterColumns.includes('rancher_cluster_id')) {
+  db.exec('ALTER TABLE clusters ADD COLUMN rancher_cluster_id TEXT');
+}
+const deploymentColumns = db.prepare("PRAGMA table_info(deployments)").all().map((c) => c.name);
+if (!deploymentColumns.includes('rancher_namespace')) {
+  db.exec('ALTER TABLE deployments ADD COLUMN rancher_namespace TEXT');
+}
+if (!deploymentColumns.includes('rancher_app_name')) {
+  db.exec('ALTER TABLE deployments ADD COLUMN rancher_app_name TEXT');
 }
 
 // Indexes — safe now that every column they reference is guaranteed to
