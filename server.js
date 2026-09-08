@@ -8,6 +8,11 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust the Nginx reverse proxy's X-Forwarded-* headers (one hop) so
+// req.protocol/req.secure reflect the client-facing scheme rather than the
+// plain-HTTP connection Nginx makes to this container.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());

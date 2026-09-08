@@ -151,16 +151,26 @@ router.get('/oidc/login', async (req, res) => {
     const code_verifier = generators.codeVerifier();
     const state = generators.state();
 
-    // Store verifiers temporarily in httpOnly cookies (valid for 5 minutes)
-    const isProd = process.env.NODE_ENV === 'production';
+    // Store verifiers temporarily in httpOnly cookies (valid for 5 minutes).
+    // `secure` must match how the browser actually reached us — NODE_ENV
+    // alone isn't a reliable signal here, since a production deployment
+    // may still be plain HTTP on an internal network (e.g. behind Nginx
+    // with no TLS termination). req.secure reflects the real scheme,
+    // honoring X-Forwarded-Proto when `trust proxy` is set. Setting
+    // `secure: true` on a plain-HTTP connection makes browsers silently
+    // drop the cookie, which then surfaces as a bogus
+    // "State parameter mismatch" error on callback.
+    const secureCookie = req.secure;
     res.cookie('oidc_code_verifier', code_verifier, {
       httpOnly: true,
-      secure: isProd,
+      secure: secureCookie,
+      sameSite: 'lax',
       maxAge: 300000,
     });
     res.cookie('oidc_state', state, {
       httpOnly: true,
-      secure: isProd,
+      secure: secureCookie,
+      sameSite: 'lax',
       maxAge: 300000,
     });
 

@@ -180,6 +180,8 @@ To enable OIDC, set the following environment variables:
 
 > **Certificate errors:** If OIDC login fails with `self-signed certificate in certificate chain`, Node doesn't trust the CA that issued Keycloak's TLS certificate. Export that CA's certificate as PEM, mount it into the container, and set `OIDC_CA_CERT_PATH` to its path — this trusts your CA specifically rather than disabling verification.
 
+> **"State parameter mismatch or verification session expired":** This means the `oidc_state`/`oidc_code_verifier` cookies set at `/api/auth/oidc/login` never made it back on the callback request. The app marks these cookies `Secure` whenever it's reached over HTTPS (directly, or via `X-Forwarded-Proto: https` from a reverse proxy) — if you're running plain HTTP on an internal network, that's already handled automatically and this error usually means something else stripped the cookie (a proxy not forwarding `Set-Cookie`, a different host/port between the login and callback requests, or the Keycloak login taking longer than the 5-minute cookie lifetime).
+
 #### Keycloak Client Configuration:
 1. Create a client with ID `deployment-manager` (or matching `OIDC_CLIENT_ID`).
 2. Set **Access Type / Client Authentication** to `public` (recommended if you don't have realm admin rights to obtain client secrets) or `confidential`.
