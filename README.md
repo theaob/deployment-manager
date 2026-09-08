@@ -93,6 +93,27 @@ The Nginx proxy exposes port `80`, routing incoming HTTP traffic to the applicat
 
 This setup is ideal for integrating with Windows/Active Directory single sign-on using the SPNEGO/Kerberos Nginx module (pre-configured to forward identity headers securely).
 
+### Upgrading & Data Persistence
+
+**Everything is in one file.** Clusters, deployments, reservations, users, and the SMTP/Zulip notification settings all live in a single SQLite database at `data/deployment-manager.db` — nothing else needs backing up or migrating separately. That directory is bind-mounted (`./data:/app/data`), not a named Docker volume, so it is **never** touched by `docker-compose down`, `docker-compose down -v`, `docker rm`, or an image update — the only way to lose it is to delete the `data/` directory yourself. Schema changes between versions only ever *add* columns/tables on startup; upgrading never drops or rewrites existing rows.
+
+**To upgrade** (when using a pre-built image rather than `build: .`):
+```bash
+docker-compose pull        # docker-compose alone does NOT fetch a newer image for an existing tag
+docker-compose up -d
+```
+Plain `docker-compose up -d` reuses whatever image is already cached locally for that tag — without an explicit `pull` first, "updating" silently does nothing.
+
+> [!WARNING]
+> **`KeyError: 'ContainerConfig'` on `up -d` after a new image arrives?** This is a well-known bug in the legacy Python `docker-compose` (v1, deprecated) — it happens when that tool tries to recreate an *existing* container in place against a new image. It's unrelated to this app. Two fixes:
+> 1. **Best:** switch to Docker Compose V2 — use `docker compose` (a space, no hyphen) instead of `docker-compose`. Check availability with `docker compose version`; on Ubuntu, install it with `sudo apt install docker-compose-plugin` if missing. V2 doesn't have this bug.
+> 2. **Quick workaround** without changing tooling: remove the stale container before `up`, since the bug only triggers when recreating one in place:
+>    ```bash
+>    docker rm -f deployment-manager
+>    docker-compose up -d
+>    ```
+>    (This is safe — it never touches the `data/` bind mount.)
+
 ### General Configuration
 
 The following environment variables can be set to configure the server's basic behavior:
@@ -277,6 +298,8 @@ docker run -d -p 3000:3000 -v dm-data:/app/data <your-dockerhub-user>/deployment
 ```
 
 > **Note:** The `-v dm-data:/app/data` flag persists the SQLite database across container restarts.
+
+If you're running this via Docker Compose instead, see [Upgrading & Data Persistence](#upgrading--data-persistence) above — including a fix for the `KeyError: 'ContainerConfig'` error some hit when pulling a new image without removing the old container first.
 
 ## License
 
