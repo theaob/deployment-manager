@@ -194,7 +194,7 @@ const App = {
   /** Render the navbar */
   renderNavbar(active) {
     const isAdmin = this.user?.role === 'admin';
-    const initials = (this.user?.display_name || '?').slice(0, 2).toUpperCase();
+    const initials = this.getInitials(this.user?.display_name);
 
     return `
       <nav class="navbar">
@@ -253,6 +253,18 @@ const App = {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  },
+
+  /**
+   * Derives avatar initials from a display name: one word ("admin1") ->
+   * its first 2 characters; multiple words ("Ali Onur Baykal") -> the
+   * first letter of each word, up to 3 ("AOB"). Falls back to "?".
+   */
+  getInitials(displayName, max = 3) {
+    const words = (displayName || '').trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '?';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return words.slice(0, max).map((w) => w[0].toUpperCase()).join('');
   },
 };
 

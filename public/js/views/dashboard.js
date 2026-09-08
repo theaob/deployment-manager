@@ -205,7 +205,7 @@ const DashboardView = {
         <div class="deployment-meta">
           ${isReserved ? `
             <span class="reserved-by">
-              <span class="user-icon">${(dep.reservation.display_name || '?')[0].toUpperCase()}</span>
+              <span class="user-icon">${App.getInitials(dep.reservation.display_name)}</span>
               <span class="reserved-by-name" title="${this.escapeHtml(dep.reservation.display_name)}">${this.escapeHtml(dep.reservation.display_name)}</span>
             </span>
             <span class="time-tracker ${longDuration ? 'long-duration' : ''}" data-reserved-at="${dep.reservation.reserved_at}">
