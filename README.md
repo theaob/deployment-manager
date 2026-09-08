@@ -95,7 +95,24 @@ This setup is ideal for integrating with Windows/Active Directory single sign-on
 
 ### Upgrading & Data Persistence
 
-**Everything is in one file.** Clusters, deployments, reservations, users, and the SMTP/Zulip notification settings all live in a single SQLite database at `data/deployment-manager.db` — nothing else needs backing up or migrating separately. That directory is bind-mounted (`./data:/app/data`), not a named Docker volume, so it is **never** touched by `docker-compose down`, `docker-compose down -v`, `docker rm`, or an image update — the only way to lose it is to delete the `data/` directory yourself. Schema changes between versions only ever *add* columns/tables on startup; upgrading never drops or rewrites existing rows.
+> [!IMPORTANT]
+> **Verify this before you rely on any of it.** Everything below assumes `/app/data` is actually bind-mounted to something on the host — true for this repo's own `docker-compose.yml` (`./data:/app/data`), but **not** automatic if you wrote your own compose file (e.g. to pull a pre-built image from a registry instead of `build: .`). With no mount, the database lives *inside the container's own writable layer* — it looks like it's persisting across plain restarts, but a full recreate (`docker-compose down` + `up`, `docker rm`, a new image) starts the container fresh with nothing in `/app/data`, silently wiping every cluster, reservation, user, and integration setting (the first person to sign back in becomes admin again, as if this were a brand new install — that's the tell).
+>
+> Check right now:
+> ```bash
+> docker inspect deployment-manager --format '{{json .Mounts}}'
+> ```
+> If that's empty (`[]` / `null`) or doesn't list `/app/data`, add a `volumes:` entry to your compose service:
+> ```yaml
+> services:
+>   deployment-manager:
+>     # ...
+>     volumes:
+>       - ./data:/app/data
+> ```
+> then `docker-compose up -d` once — Docker creates `./data` on the host automatically if it doesn't exist. This only protects data going forward; anything already lost to a prior reset is not recoverable.
+
+**Everything is in one file.** Clusters, deployments, reservations, users, and the SMTP/Zulip notification settings all live in a single SQLite database at `data/deployment-manager.db` — nothing else needs backing up or migrating separately. As long as that directory is genuinely bind-mounted (see above), it is **never** touched by `docker-compose down`, `docker-compose down -v`, `docker rm`, or an image update — the only way to lose it is to delete the `data/` directory yourself. Schema changes between versions only ever *add* columns/tables on startup; upgrading never drops or rewrites existing rows.
 
 **To upgrade** (when using a pre-built image rather than `build: .`):
 ```bash
