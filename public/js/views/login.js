@@ -141,7 +141,12 @@ const LoginView = {
       // No manual fallback here on purpose: Keycloak is the sole identity
       // source in this mode, so there is no "type any username" option —
       // the backend rejects it outright even if one were shown.
-      loading.style.display = 'none';
+      //
+      // Auto-redirect immediately rather than waiting for a click — if the
+      // browser already has an active Keycloak session, this bounces the
+      // user straight back in without ever showing a login screen, the
+      // same way "sso" mode logs in without any interaction.
+      loading.querySelector('p').textContent = 'Redirecting to Keycloak…';
       const card = document.querySelector('.login-card');
       const oidcDiv = document.createElement('div');
       oidcDiv.id = 'oidc-container';
@@ -149,13 +154,14 @@ const LoginView = {
       oidcDiv.style.padding = '12px 0';
       oidcDiv.innerHTML = `
         <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
-          Sign in securely using your Keycloak credentials.
+          Click below if you're not redirected automatically.
         </p>
         <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
           🔑 Sign In with Keycloak
         </a>
       `;
       card.appendChild(oidcDiv);
+      window.location.href = '/api/auth/oidc/login';
       return;
     }
 
