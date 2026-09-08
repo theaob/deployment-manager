@@ -106,13 +106,36 @@ const App = {
     localStorage.setItem('dm_auth', JSON.stringify({ token, user }));
   },
 
-  /** Clear auth state */
+  /**
+   * Clear local auth state only — used for the passive "your token
+   * expired" path (see the 401 handling in api() below). Deliberately
+   * does NOT touch the identity provider's session: an expired app JWT
+   * should quietly re-authenticate via Keycloak's still-live SSO session
+   * (the login screen auto-redirects), not force a real logout everywhere
+   * just because our short-lived token ran out.
+   */
   logout() {
     this.token = null;
     this.user = null;
     localStorage.removeItem('dm_auth');
     this.navigate('login');
     this.showToast('Logged out.', 'info');
+  },
+
+  /**
+   * Full, explicit sign-out — for the navbar "Logout" button only. Clears
+   * local state and hits the server's logout endpoint, which also ends
+   * the Keycloak session (RP-initiated logout) when OIDC is configured.
+   * Without this, "Logout" would be meaningless in OIDC mode: the login
+   * screen auto-redirects to Keycloak with no click, and if Keycloak's
+   * own session were still alive, it would silently sign the user right
+   * back in.
+   */
+  signOut() {
+    this.token = null;
+    this.user = null;
+    localStorage.removeItem('dm_auth');
+    window.location.href = '/api/auth/logout';
   },
 
   /** API fetch wrapper */
@@ -221,7 +244,7 @@ const App = {
             <span>${this.escapeHtml(this.user?.display_name)}</span>
             <span class="role-tag ${this.user?.role}">${this.user?.role}</span>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="App.logout()">Logout</button>
+          <button class="btn btn-ghost btn-sm" onclick="App.signOut()">Logout</button>
         </div>
       </nav>
     `;

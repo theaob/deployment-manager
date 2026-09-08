@@ -8,6 +8,26 @@ const { isOidcEnabled, getOidcClient, generators } = require('../middleware/oidc
 const router = express.Router();
 
 /**
+ * Where Keycloak should send the browser back to after RP-initiated
+ * logout. Configurable since Keycloak validates this against the client's
+ * registered "Valid post logout redirect URIs" — defaults to the origin
+ * of OIDC_REDIRECT_URI (e.g. OIDC_REDIRECT_URI=https://x/api/auth/oidc/callback
+ * -> https://x/), which covers the common case without extra config.
+ */
+function derivePostLogoutRedirectUri() {
+  if (process.env.OIDC_POST_LOGOUT_REDIRECT_URI) {
+    return process.env.OIDC_POST_LOGOUT_REDIRECT_URI;
+  }
+  const redirectUri = process.env.OIDC_REDIRECT_URI || 'http://localhost:3000/api/auth/oidc/callback';
+  try {
+    const parsed = new URL(redirectUri);
+    return `${parsed.protocol}//${parsed.host}/`;
+  } catch {
+    return '/';
+  }
+}
+
+/**
  * GET /api/auth/mode
  * Returns the current authentication mode so the frontend knows whether to
  * show the manual login form or attempt SSO/OIDC auto-login.
@@ -112,6 +132,40 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * GET /api/auth/logout
+ * Ends the session. For OIDC, this is an RP-initiated logout — it also
+ * ends the user's Keycloak session, not just this app's — because
+ * otherwise "Logout" doesn't mean anything in OIDC mode: the login screen
+ * auto-redirects to Keycloak with no click, and if Keycloak's own session
+ * is still alive, it silently re-authenticates the user right back in.
+ * For local/SSO modes (or if there's no id_token on file), this just
+ * bounces back to the login screen.
+ */
+router.get('/logout', async (req, res) => {
+  const idToken = req.cookies.oidc_id_token;
+  res.clearCookie('oidc_id_token');
+
+  if (!isOidcEnabled() || !idToken) {
+    return res.redirect('/#login');
+  }
+
+  try {
+    const client = await getOidcClient();
+    const logoutUrl = client.endSessionUrl({
+      id_token_hint: idToken,
+      post_logout_redirect_uri: derivePostLogoutRedirectUri(),
+    });
+    res.redirect(logoutUrl);
+  } catch (err) {
+    // Not every OIDC provider supports RP-initiated logout (no
+    // end_session_endpoint in discovery) — fall back to a plain local
+    // logout rather than leaving the user stuck.
+    console.error('[OIDC] Logout redirect failed, falling back to local logout:', err.message);
+    res.redirect('/#login');
+  }
+});
+
+/**
  * GET /api/auth/me
  * Returns the current authenticated user's info.
  */
@@ -206,6 +260,22 @@ router.get('/oidc/callback', async (req, res) => {
     });
 
     const claims = tokenSet.claims();
+
+    // Kept for RP-initiated logout (GET /api/auth/logout) — Keycloak needs
+    // the id_token back as id_token_hint to know whose session to end.
+    // Lifetime matches the app JWT (24h) rather than the ID token's own
+    // (usually much shorter) expiry: it's only ever used as a hint on an
+    // explicit logout, not for authorization, so an expired-looking token
+    // is still fine to present — Keycloak's own session is what governs
+    // whether there's anything left to log out of.
+    if (tokenSet.id_token) {
+      res.cookie('oidc_id_token', tokenSet.id_token, {
+        httpOnly: true,
+        secure: req.secure,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+    }
 
     // Extract username (sub/preferred_username/email)
     const username = (claims.preferred_username || claims.email || claims.sub || '').trim();
