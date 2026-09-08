@@ -95,6 +95,7 @@ const AdminView = {
 
       this.clusters = clustersRes.clusters;
       this.users = usersRes.users;
+      this.emailManagedByOidc = usersRes.emailManagedByOidc;
       this.settings = settingsRes.settings;
 
       this.renderClusters();
@@ -182,17 +183,23 @@ const AdminView = {
                 <td class="mono">${this.escapeHtml(user.username)}</td>
                 <td>${this.escapeHtml(user.display_name)}</td>
                 <td>
-                  <div style="display: flex; gap: 6px; align-items: center;">
-                    <input
-                      type="email"
-                      class="user-email-input"
-                      id="email-${user.id}"
-                      value="${this.escapeHtml(user.email || '')}"
-                      placeholder="user@example.com"
-                      style="width: 180px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;"
-                    />
-                    <button class="btn btn-ghost btn-sm" onclick="AdminView.saveUserEmail('${user.id}')">Save</button>
-                  </div>
+                  ${this.emailManagedByOidc ? `
+                    <span title="Synced automatically from Keycloak on login" style="color: var(--text-secondary); font-size: 12px;">
+                      ${user.email ? this.escapeHtml(user.email) : '<span style="color: var(--text-muted);">—</span>'}
+                    </span>
+                  ` : `
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <input
+                        type="email"
+                        class="user-email-input"
+                        id="email-${user.id}"
+                        value="${this.escapeHtml(user.email || '')}"
+                        placeholder="user@example.com"
+                        style="width: 180px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px;"
+                      />
+                      <button class="btn btn-ghost btn-sm" onclick="AdminView.saveUserEmail('${user.id}')">Save</button>
+                    </div>
+                  `}
                 </td>
                 <td><span class="role-tag ${user.role}">${user.role}</span></td>
                 <td class="mono">${new Date(user.created_at + 'Z').toLocaleDateString()}</td>
