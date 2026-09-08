@@ -1,7 +1,9 @@
 /**
  * Login View — SPINEGO branded login screen
- * Supports: "local" (username only) manual login, plus automatic
- * "sso" (trusted header) and "oidc" (Keycloak) modes with a manual fallback.
+ * Supports: "local" (username only) manual login, "sso" (trusted header)
+ * with a manual fallback if the header is missing, and "oidc" (Keycloak) —
+ * which has no manual fallback, since Keycloak is the sole identity source
+ * once configured.
  */
 const LoginView = {
   authMode: null,
@@ -140,6 +142,9 @@ const LoginView = {
     }
 
     if (this.authMode === 'oidc') {
+      // No manual fallback here on purpose: Keycloak is the sole identity
+      // source in this mode, so there is no "type any username" option —
+      // the backend rejects it outright even if one were shown.
       loading.style.display = 'none';
       const card = document.querySelector('.login-card');
       const oidcDiv = document.createElement('div');
@@ -150,18 +155,11 @@ const LoginView = {
         <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
           Sign in securely using your Keycloak credentials.
         </p>
-        <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
+        <a href="/api/auth/oidc/login" class="btn btn-primary btn-lg btn-block" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
           🔑 Sign In with Keycloak
         </a>
-        <button class="btn btn-ghost btn-block" id="oidc-fallback-btn" style="font-size: 13px; color: var(--text-muted);">
-          Sign In Manually
-        </button>
       `;
       card.appendChild(oidcDiv);
-
-      document.getElementById('oidc-fallback-btn').addEventListener('click', () => {
-        switchToManual();
-      });
       return;
     }
 

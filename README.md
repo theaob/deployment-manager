@@ -131,7 +131,7 @@ When `SSO_HEADER` is set, the application will automatically sign in users using
 
 ### Keycloak / OpenID Connect (OIDC) SSO
 
-You can offload authentication to a Keycloak realm or any OpenID Connect (OIDC) identity provider. When OIDC is configured, the login screen displays a "Sign In with Keycloak" button which redirects the user to your realm login page.
+You can offload authentication to a Keycloak realm or any OpenID Connect (OIDC) identity provider. When OIDC is configured, the login screen displays only a "Sign In with Keycloak" button — there is no manual username fallback. Keycloak becomes the sole source of identity: `POST /api/auth/login` rejects any manually-typed username outright (`403 Manual login is disabled`), so every user must authenticate through your realm.
 
 To enable OIDC, set the following environment variables:
 

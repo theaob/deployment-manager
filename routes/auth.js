@@ -25,7 +25,10 @@ router.get('/mode', (req, res) => {
 
   res.json({
     mode,
-    fallbackMode: 'local',
+    // No manual fallback when OIDC is configured — Keycloak is the sole
+    // identity source, so the login screen must not offer a way to type
+    // in an arbitrary username instead.
+    fallbackMode: oidcEnabled ? null : 'local',
     oidcEnabled,
     ssoEnabled
   });
@@ -36,7 +39,11 @@ router.get('/mode', (req, res) => {
  * Logs in (or registers) a user.
  *
  * SSO mode:    Reads username from the proxy-injected HTTP header specified by SSO_HEADER.
- *              Falls back to manual (local) login if header is missing/empty and a body username is provided.
+ *              Falls back to manual (local) login if header is missing/empty and a body username is provided
+ *              — unless OIDC is also enabled (see below).
+ * OIDC mode:   This endpoint never accepts a manually-typed username when OIDC_ISSUER is
+ *              configured — OIDC is the sole source of truth for identity, so there is no
+ *              "type any username" bypass. Use GET /api/auth/oidc/login instead.
  * Local mode:  Body: { username: string }
  */
 router.post('/login', async (req, res) => {
@@ -48,12 +55,20 @@ router.post('/login', async (req, res) => {
     const ssoUser = req.headers[ssoHeaderName.toLowerCase()];
     if (ssoUser && typeof ssoUser === 'string' && ssoUser.trim().length > 0) {
       username = ssoUser;
+    } else if (isOidcEnabled()) {
+      return res.status(403).json({
+        error: 'Manual login is disabled. Please sign in with Keycloak.',
+      });
     } else if (!username || typeof username !== 'string' || username.trim().length === 0) {
       // SSO header is missing/empty and no manual fallback username was given.
       return res.status(401).json({
         error: `SSO authentication failed: Trusted header "${ssoHeaderName}" is missing or empty.`
       });
     }
+  } else if (isOidcEnabled()) {
+    return res.status(403).json({
+      error: 'Manual login is disabled. Please sign in with Keycloak.',
+    });
   } else if (!username || typeof username !== 'string' || username.trim().length === 0) {
     // Standard login validation
     return res.status(400).json({ error: 'Username is required' });
