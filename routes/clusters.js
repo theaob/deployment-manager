@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { sweepExpiredReservations } = require('../lib/notifications');
-const { attachRancherStatuses } = require('../lib/rancher');
+const { attachRancherStatuses, redactCluster } = require('../lib/rancher');
 
 const router = express.Router();
 
@@ -50,9 +50,11 @@ router.get('/', async (req, res) => {
     };
   });
 
+  // Fetch live Rancher statuses (reads each cluster's rancher_api_token)
+  // before redacting that same token out of what's sent to the client.
   await attachRancherStatuses(result);
 
-  res.json({ clusters: result });
+  res.json({ clusters: result.map(redactCluster) });
 });
 
 /**
@@ -101,7 +103,7 @@ router.get('/:clusterId', async (req, res) => {
 
   await attachRancherStatuses([result]);
 
-  res.json(result);
+  res.json(redactCluster(result));
 });
 
 module.exports = router;

@@ -1156,23 +1156,21 @@ a {
   gap: var(--space-sm);
 }
 
-/* Inline "map this cluster to a Rancher cluster ID" field, next to the
-   cluster's name/delete-button header row. */
+/* Inline "this cluster's own Rancher URL/API token" fields, next to the
+   cluster's name/delete-button header row. Each cluster has its own
+   Rancher, so this connection is configured per cluster, not globally. */
 .admin-cluster-rancher {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   margin: 0 0 var(--space-md) var(--space-lg);
   font-size: var(--text-xs);
 }
 
-.admin-cluster-rancher label {
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
 .admin-cluster-rancher input {
   flex: 1;
+  min-width: 160px;
   max-width: 260px;
   padding: 6px 10px;
   background: var(--bg-input);

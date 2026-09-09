@@ -52,11 +52,12 @@ db.exec(`
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
   );
 
-  -- rancher_cluster_id / rancher_namespace / rancher_app_name (added via the
-  -- ALTER TABLE migration below) map a cluster/deployment pair to the
-  -- Rancher Helm/Catalog app (catalog.cattle.io.apps) it corresponds to, so
-  -- its live status can be looked up via the Rancher API. Optional — a
-  -- deployment with no mapping simply shows no Rancher status.
+  -- clusters.rancher_url/rancher_api_token + deployments.rancher_app_name
+  -- (added via the ALTER TABLE migration below) map a cluster/deployment
+  -- pair to that cluster's own Rancher server and the Helm/Catalog app
+  -- (catalog.cattle.io.apps) within it, so its live status can be looked
+  -- up via the Rancher API — see lib/rancher.js. Optional — a deployment
+  -- with no mapping simply shows no Rancher status.
 
   CREATE TABLE IF NOT EXISTS reservations (
     id TEXT PRIMARY KEY,
@@ -85,13 +86,18 @@ if (!userColumns.includes('email')) {
   db.exec('ALTER TABLE users ADD COLUMN email TEXT');
 }
 const clusterColumns = db.prepare("PRAGMA table_info(clusters)").all().map((c) => c.name);
-if (!clusterColumns.includes('rancher_cluster_id')) {
-  db.exec('ALTER TABLE clusters ADD COLUMN rancher_cluster_id TEXT');
+if (!clusterColumns.includes('rancher_url')) {
+  db.exec('ALTER TABLE clusters ADD COLUMN rancher_url TEXT');
 }
+if (!clusterColumns.includes('rancher_api_token')) {
+  db.exec('ALTER TABLE clusters ADD COLUMN rancher_api_token TEXT');
+}
+// rancher_cluster_id (an earlier design's leftover, from when one Rancher
+// was assumed to manage many downstream clusters) and rancher_namespace
+// (superseded — a deployment's namespace is just its own name, see
+// lib/rancher.js) may still exist as unused columns on a database that
+// ran that migration; harmless, just no longer read or written.
 const deploymentColumns = db.prepare("PRAGMA table_info(deployments)").all().map((c) => c.name);
-if (!deploymentColumns.includes('rancher_namespace')) {
-  db.exec('ALTER TABLE deployments ADD COLUMN rancher_namespace TEXT');
-}
 if (!deploymentColumns.includes('rancher_app_name')) {
   db.exec('ALTER TABLE deployments ADD COLUMN rancher_app_name TEXT');
 }

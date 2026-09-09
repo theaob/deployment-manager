@@ -33,39 +33,68 @@ router.post('/clusters', (req, res) => {
   db.prepare('INSERT INTO clusters (id, name, environment) VALUES (?, ?, ?)').run(id, name, environment);
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
-  res.status(201).json({ cluster });
+  res.status(201).json({ cluster: rancher.redactCluster(cluster) });
 });
 
 /**
  * PUT /api/admin/clusters/:id
  * Update a cluster.
- * Body: { name?: string, environment?: string, rancher_cluster_id?: string | null }
- *   rancher_cluster_id — the Rancher-internal cluster id this cluster maps
- *   to (see lib/rancher.js), used to look up its deployments' app status.
- *   Pass an empty string/null to clear the mapping. Omit to leave it as-is.
+ * Body: { name?: string, environment?: string, rancher_url?: string | null, rancher_api_token?: string }
+ *   rancher_url — the base URL of this cluster's own Rancher server (each
+ *   cluster has its own, not one Rancher shared across clusters). Pass an
+ *   empty string/null to clear it.
+ *   rancher_api_token — a Rancher API token for that server. Only
+ *   overwritten when a non-empty value is sent — omit or send '' to keep
+ *   the currently stored token.
+ *   Both are used to look up this cluster's deployments' live app status
+ *   (see lib/rancher.js). Omit either field to leave it as-is.
  */
 router.put('/clusters/:id', (req, res) => {
   const { id } = req.params;
-  const { name, environment, rancher_cluster_id: rancherClusterIdRaw } = req.body;
+  const { name, environment, rancher_url: rancherUrlRaw, rancher_api_token: rancherApiTokenRaw } = req.body;
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
   if (!cluster) {
     return res.status(404).json({ error: 'Cluster not found' });
   }
 
-  const rancherClusterId = rancherClusterIdRaw !== undefined
-    ? (String(rancherClusterIdRaw).trim() || null)
-    : cluster.rancher_cluster_id;
+  const rancherUrl = rancherUrlRaw !== undefined
+    ? (String(rancherUrlRaw).trim() || null)
+    : cluster.rancher_url;
+  // Like the SMTP/Zulip secrets: a non-empty value overwrites, anything
+  // else (omitted, or sent blank to avoid re-typing it) keeps the current one.
+  const rancherApiToken = rancherApiTokenRaw ? String(rancherApiTokenRaw) : cluster.rancher_api_token;
 
-  db.prepare('UPDATE clusters SET name = ?, environment = ?, rancher_cluster_id = ? WHERE id = ?').run(
+  db.prepare('UPDATE clusters SET name = ?, environment = ?, rancher_url = ?, rancher_api_token = ? WHERE id = ?').run(
     name || cluster.name,
     environment || cluster.environment,
-    rancherClusterId,
+    rancherUrl,
+    rancherApiToken,
     id
   );
 
   const updated = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
-  res.json({ cluster: updated });
+  res.json({ cluster: rancher.redactCluster(updated) });
+});
+
+/**
+ * POST /api/admin/clusters/:id/test-rancher
+ * Verifies this cluster's configured Rancher URL/API token actually work,
+ * independent of any specific deployment/app mapping.
+ */
+router.post('/clusters/:id/test-rancher', async (req, res) => {
+  const { id } = req.params;
+  const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
+  if (!cluster) {
+    return res.status(404).json({ error: 'Cluster not found' });
+  }
+
+  try {
+    const result = await rancher.testConnection({ rancherUrl: cluster.rancher_url, rancherApiToken: cluster.rancher_api_token });
+    res.json({ message: `Connected to Rancher (server version: ${result.version})` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 /**
@@ -151,9 +180,11 @@ router.delete('/deployments/:id', (req, res) => {
 /**
  * PUT /api/admin/deployments/:id/rancher
  * Maps (or clears) the Rancher Helm app this deployment corresponds to.
- * Body: { rancher_namespace?: string | null, rancher_app_name?: string | null }
- * Also requires the owning cluster to have a rancher_cluster_id set (see
- * PUT /clusters/:id) before a status lookup will actually happen.
+ * Body: { rancher_app_name?: string | null }
+ * Its Rancher namespace isn't set here — it's just this deployment's own
+ * name (see lib/rancher.js). Also requires the owning cluster to have a
+ * Rancher URL/API token set (see PUT /clusters/:id) before a status lookup
+ * will actually happen.
  */
 router.put('/deployments/:id/rancher', (req, res) => {
   const { id } = req.params;
@@ -163,14 +194,9 @@ router.put('/deployments/:id/rancher', (req, res) => {
     return res.status(404).json({ error: 'Deployment not found' });
   }
 
-  const namespace = typeof req.body.rancher_namespace === 'string' ? req.body.rancher_namespace.trim() : '';
   const appName = typeof req.body.rancher_app_name === 'string' ? req.body.rancher_app_name.trim() : '';
 
-  db.prepare('UPDATE deployments SET rancher_namespace = ?, rancher_app_name = ? WHERE id = ?').run(
-    namespace || null,
-    appName || null,
-    id
-  );
+  db.prepare('UPDATE deployments SET rancher_app_name = ? WHERE id = ?').run(appName || null, id);
 
   const updated = db.prepare('SELECT * FROM deployments WHERE id = ?').get(id);
   res.json({ deployment: updated });
@@ -269,9 +295,6 @@ router.get('/settings', (req, res) => {
       zulip_site: raw.zulip_site || '',
       zulip_bot_email: raw.zulip_bot_email || '',
       zulip_bot_api_key_set: !!raw.zulip_bot_api_key,
-      rancher_enabled: raw.rancher_enabled === 'true',
-      rancher_url: raw.rancher_url || '',
-      rancher_api_token_set: !!raw.rancher_api_token,
     },
   });
 });
@@ -287,9 +310,9 @@ router.put('/settings', (req, res) => {
   const body = req.body || {};
   const updates = {};
 
-  const boolFields = ['smtp_enabled', 'smtp_secure', 'zulip_enabled', 'rancher_enabled'];
-  const textFields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'zulip_site', 'zulip_bot_email', 'rancher_url'];
-  const secretFields = ['smtp_pass', 'zulip_bot_api_key', 'rancher_api_token'];
+  const boolFields = ['smtp_enabled', 'smtp_secure', 'zulip_enabled'];
+  const textFields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_from', 'zulip_site', 'zulip_bot_email'];
+  const secretFields = ['smtp_pass', 'zulip_bot_api_key'];
 
   for (const field of boolFields) {
     if (field in body) updates[field] = body[field] ? 'true' : 'false';
@@ -335,20 +358,6 @@ router.post('/settings/test', async (req, res) => {
 
   const results = await sendTestNotification(admin.email);
   res.json({ message: `Test notification attempted to ${admin.email}`, results });
-});
-
-/**
- * POST /api/admin/settings/test-rancher
- * Verifies the configured Rancher URL/API token actually work, independent
- * of any specific cluster/app mapping.
- */
-router.post('/settings/test-rancher', async (req, res) => {
-  try {
-    const result = await rancher.testConnection();
-    res.json({ message: `Connected to Rancher (server version: ${result.version})` });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
 });
 
 /**
