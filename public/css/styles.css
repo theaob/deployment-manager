@@ -947,7 +947,15 @@ a {
   align-items: center;
   gap: var(--space-md);
   flex: 1;
-  min-width: 0;
+  /* A real floor (not 0) so this side stops shrinking once the name is
+     already down to a short ellipsized nub, rather than conceding space
+     to .deployment-meta indefinitely. Past that floor, .deployment-meta
+     (flex-shrink: 0) no longer fits beside it and wraps below as a whole
+     block on its own full-width line — instead of staying squeezed onto
+     the same line and fragmenting internally (a badge here, a button on
+     its own line there) the way it could with a long username and a long
+     duration/expiry together. */
+  min-width: 140px;
 }
 
 .status-dot {
