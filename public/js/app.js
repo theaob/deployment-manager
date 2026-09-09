@@ -289,54 +289,6 @@ const App = {
     if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
     return words.slice(0, max).map((w) => w[0].toUpperCase()).join('');
   },
-
-  /**
-   * Renders a small pill showing a deployment's live Rancher app status
-   * (see lib/rancher.js — `status` is what GET /api/clusters attaches as
-   * `deployment.rancher_status` for a mapped deployment). Shared between
-   * the Dashboard and Admin views.
-   *
-   * `status.ok === false` means the lookup itself failed (Rancher
-   * unreachable, bad auth, app not found, ...) — shown as a distinct
-   * "unavailable" pill with the error as a tooltip, rather than guessing.
-   */
-  renderRancherBadge(status) {
-    if (!status) return '';
-
-    if (status.ok === false) {
-      return `<span class="rancher-badge rancher-unavailable" title="${this.escapeHtml(status.error || 'Rancher status unavailable')}">⚠ Rancher unavailable</span>`;
-    }
-
-    const state = status.state || 'unknown';
-    let cls = 'rancher-unknown';
-    let label = state;
-
-    if (status.transitioning) {
-      cls = 'rancher-transitioning';
-      label = `${state}…`;
-    } else if (status.error || state === 'failed') {
-      cls = 'rancher-failed';
-      label = 'Failed';
-    } else if (state === 'deployed') {
-      cls = 'rancher-deployed';
-      label = 'Deployed';
-    }
-
-    // Show whichever version the deployed chart reports — the app's own
-    // version if it sets one, else the chart's packaging version. Strip a
-    // leading "v" so "v2.4.1" and "2.4.1" both render as "v2.4.1", never
-    // doubled up.
-    const rawVersion = status.appVersion || status.chartVersion;
-    if (rawVersion) {
-      label += ` · v${rawVersion.replace(/^v/i, '')}`;
-    }
-
-    const titleParts = [status.message ? `Rancher: ${state} — ${status.message}` : `Rancher app status: ${state}`];
-    if (status.appVersion) titleParts.push(`app version ${status.appVersion}`);
-    if (status.chartVersion && status.chartVersion !== status.appVersion) titleParts.push(`chart version ${status.chartVersion}`);
-
-    return `<span class="rancher-badge ${cls}" title="${this.escapeHtml(titleParts.join(' · '))}">● ${this.escapeHtml(label)}</span>`;
-  },
 };
 
 // Boot the app

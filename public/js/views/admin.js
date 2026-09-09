@@ -41,7 +41,7 @@ const AdminView = {
                 <h3>📦 Clusters & Deployments</h3>
               </div>
               <p style="color: var(--text-tertiary); font-size: 13px; margin-bottom: 16px;">
-                Each cluster can have its own Rancher — set that cluster's Rancher URL and API token (create one under your user avatar → Account &amp; API Keys) to show live app status on the dashboard. A deployment's Rancher namespace is just its own name — only give it a Rancher app name to map it.
+                Give a cluster its own Rancher URL to show a shortcut link to it on the dashboard.
               </p>
               <div id="admin-clusters-list">
                 <div class="skeleton skeleton-row"></div>
@@ -139,9 +139,8 @@ const AdminView = {
 
         <div class="admin-cluster-rancher">
           <input type="text" id="rancher-url-${cluster.id}" value="${this.escapeHtml(cluster.rancher_url || '')}" placeholder="Rancher URL, e.g. https://rancher.example.com" />
-          <input type="password" id="rancher-token-${cluster.id}" placeholder="${cluster.rancher_api_token_set ? 'API token set (leave blank to keep)' : 'API token'}" autocomplete="new-password" />
-          <button class="btn btn-ghost btn-sm" onclick="AdminView.saveClusterRancher('${cluster.id}')">Save</button>
-          <button class="btn btn-ghost btn-sm" onclick="AdminView.testClusterRancher('${cluster.id}')">Test Connection</button>
+          <button class="btn btn-ghost btn-sm" onclick="AdminView.saveClusterRancherUrl('${cluster.id}')">Save</button>
+          ${cluster.rancher_url ? `<a class="btn btn-ghost btn-sm" href="${this.escapeHtml(cluster.rancher_url)}" target="_blank" rel="noopener noreferrer">Open ↗</a>` : ''}
         </div>
 
         <div class="admin-deployment-list">
@@ -153,15 +152,10 @@ const AdminView = {
                   ${dep.status === 'reserved' ? `
                     <span class="status-badge active">Reserved</span>
                   ` : ''}
-                  ${dep.rancher_status ? App.renderRancherBadge(dep.rancher_status) : ''}
                   <button class="btn btn-ghost btn-sm" onclick="AdminView.deleteDeployment('${dep.id}', '${this.escapeHtml(dep.name)}')" ${dep.status === 'reserved' ? 'disabled title="Release first"' : ''}>
                     Remove
                   </button>
                 </div>
-              </div>
-              <div class="admin-deployment-rancher">
-                <input type="text" id="rancher-app-${dep.id}" value="${this.escapeHtml(dep.rancher_app_name || '')}" placeholder="Rancher app name (namespace is this deployment's own name)" />
-                <button class="btn btn-ghost btn-sm" onclick="AdminView.saveDeploymentRancher('${dep.id}')">Save</button>
               </div>
             </div>
           `).join('')}
@@ -375,50 +369,19 @@ const AdminView = {
     }
   },
 
-  async saveClusterRancher(clusterId) {
+  async saveClusterRancherUrl(clusterId) {
     const urlInput = document.getElementById(`rancher-url-${clusterId}`);
-    const tokenInput = document.getElementById(`rancher-token-${clusterId}`);
-    if (!urlInput || !tokenInput) return;
-
-    const body = { rancher_url: urlInput.value.trim() };
-    // Only send the token if the admin actually typed a new value — an
-    // empty field means "keep the current one".
-    if (tokenInput.value) body.rancher_api_token = tokenInput.value;
+    if (!urlInput) return;
 
     try {
       await App.api(`/api/admin/clusters/${clusterId}`, {
         method: 'PUT',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ rancher_url: urlInput.value.trim() }),
       });
-      App.showToast('Rancher connection saved', 'success');
+      App.showToast('Rancher URL saved', 'success');
       await this.loadData();
     } catch (err) {
-      App.showToast(err.message || 'Failed to save Rancher connection', 'error');
-    }
-  },
-
-  async testClusterRancher(clusterId) {
-    try {
-      const data = await App.api(`/api/admin/clusters/${clusterId}/test-rancher`, { method: 'POST' });
-      App.showToast(data.message, 'success');
-    } catch (err) {
-      App.showToast(err.message || 'Failed to connect to Rancher', 'error');
-    }
-  },
-
-  async saveDeploymentRancher(deploymentId) {
-    const appInput = document.getElementById(`rancher-app-${deploymentId}`);
-    if (!appInput) return;
-
-    try {
-      await App.api(`/api/admin/deployments/${deploymentId}/rancher`, {
-        method: 'PUT',
-        body: JSON.stringify({ rancher_app_name: appInput.value.trim() }),
-      });
-      App.showToast('Rancher mapping saved', 'success');
-      await this.loadData();
-    } catch (err) {
-      App.showToast(err.message || 'Failed to save Rancher mapping', 'error');
+      App.showToast(err.message || 'Failed to save Rancher URL', 'error');
     }
   },
 

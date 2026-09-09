@@ -52,12 +52,9 @@ db.exec(`
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
   );
 
-  -- clusters.rancher_url/rancher_api_token + deployments.rancher_app_name
-  -- (added via the ALTER TABLE migration below) map a cluster/deployment
-  -- pair to that cluster's own Rancher server and the Helm/Catalog app
-  -- (catalog.cattle.io.apps) within it, so its live status can be looked
-  -- up via the Rancher API — see lib/rancher.js. Optional — a deployment
-  -- with no mapping simply shows no Rancher status.
+  -- clusters.rancher_url (added via the ALTER TABLE migration below) is an
+  -- optional shortcut link to that cluster's own Rancher UI, shown on the
+  -- dashboard. Not used to call Rancher's API — just a URL.
 
   CREATE TABLE IF NOT EXISTS reservations (
     id TEXT PRIMARY KEY,
@@ -89,18 +86,13 @@ const clusterColumns = db.prepare("PRAGMA table_info(clusters)").all().map((c) =
 if (!clusterColumns.includes('rancher_url')) {
   db.exec('ALTER TABLE clusters ADD COLUMN rancher_url TEXT');
 }
-if (!clusterColumns.includes('rancher_api_token')) {
-  db.exec('ALTER TABLE clusters ADD COLUMN rancher_api_token TEXT');
-}
-// rancher_cluster_id (an earlier design's leftover, from when one Rancher
-// was assumed to manage many downstream clusters) and rancher_namespace
-// (superseded — a deployment's namespace is just its own name, see
-// lib/rancher.js) may still exist as unused columns on a database that
-// ran that migration; harmless, just no longer read or written.
-const deploymentColumns = db.prepare("PRAGMA table_info(deployments)").all().map((c) => c.name);
-if (!deploymentColumns.includes('rancher_app_name')) {
-  db.exec('ALTER TABLE deployments ADD COLUMN rancher_app_name TEXT');
-}
+// clusters.rancher_api_token and deployments.rancher_app_name/
+// rancher_cluster_id/rancher_namespace are leftovers from an earlier design
+// that queried Rancher's API for live per-deployment app status (dropped as
+// more complexity than the feature was worth — a per-cluster rancher_url
+// shortcut link covers the actual need). May still exist as unused columns
+// on a database that ran one of those migrations; harmless, just no longer
+// read or written.
 
 // Indexes — safe now that every column they reference is guaranteed to
 // exist, whether this is a fresh database or one just migrated above.

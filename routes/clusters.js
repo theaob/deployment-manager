@@ -1,15 +1,28 @@
 const express = require('express');
 const db = require('../db/database');
 const { sweepExpiredReservations } = require('../lib/notifications');
-const { attachRancherStatuses, redactCluster } = require('../lib/rancher');
 
 const router = express.Router();
+
+/**
+ * Strips a leftover rancher_api_token off a cluster row before it reaches
+ * a client, in case one is still sitting in the database from the earlier
+ * Rancher-API-status design (see db/database.js) — it's a credential, not
+ * something to hand back over an unauthenticated-for-secrets endpoint just
+ * because the column happens to still exist. rancher_url is a plain
+ * shortcut link, not sensitive, and passes through as-is.
+ */
+function redactCluster(cluster) {
+  if (!cluster) return cluster;
+  const { rancher_api_token, ...rest } = cluster;
+  return rest;
+}
 
 /**
  * GET /api/clusters
  * Returns all clusters with their deployments and current reservation status.
  */
-router.get('/', async (req, res) => {
+router.get('/', (req, res) => {
   sweepExpiredReservations();
 
   const clusters = db.prepare('SELECT * FROM clusters ORDER BY name').all();
@@ -50,10 +63,6 @@ router.get('/', async (req, res) => {
     };
   });
 
-  // Fetch live Rancher statuses (reads each cluster's rancher_api_token)
-  // before redacting that same token out of what's sent to the client.
-  await attachRancherStatuses(result);
-
   res.json({ clusters: result.map(redactCluster) });
 });
 
@@ -61,7 +70,7 @@ router.get('/', async (req, res) => {
  * GET /api/clusters/:clusterId
  * Returns a single cluster with its deployments.
  */
-router.get('/:clusterId', async (req, res) => {
+router.get('/:clusterId', (req, res) => {
   sweepExpiredReservations();
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(req.params.clusterId);
@@ -100,8 +109,6 @@ router.get('/:clusterId', async (req, res) => {
     available: deploymentsWithStatus.filter(d => d.status === 'available').length,
     reserved: deploymentsWithStatus.filter(d => d.status === 'reserved').length,
   };
-
-  await attachRancherStatuses([result]);
 
   res.json(redactCluster(result));
 });

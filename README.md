@@ -14,7 +14,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
   - Admins can see all reservations across all deployments, and force-release any of them.
   - Users can see their own history.
 - **Release Notifications**: Optional email (SMTP) and Zulip DM to a user when someone else releases their reservation for them — configured live from the Admin panel.
-- **Rancher Integration**: Shows the live status of the Rancher Helm app each deployment corresponds to, right on the dashboard — configured live from the Admin panel.
+- **Rancher Shortcut Link**: Give a cluster its own Rancher URL and the dashboard shows a link straight to it.
 - **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
 
 ## Prerequisites
@@ -147,21 +147,21 @@ By default, the app uses a simple username-based login (no password) — the fir
 
 ### Self-Signed / Internal CA Certificates
 
-This app talks to several other services over HTTPS — Keycloak (OIDC), each cluster's Rancher, Zulip, and an SMTP server — and on an intranet with no public internet access, some or all of them are commonly on an internal or self-signed CA that Node doesn't trust out of the box. That surfaces as things like `self-signed certificate in certificate chain` (OIDC), `self-signed certificate` (Rancher, Zulip), or an opaque `fetch failed`/connection error with no clear cause.
+This app talks to a couple of other services over HTTPS — Keycloak (OIDC), Zulip, and an SMTP server — and on an intranet with no public internet access, some or all of them are commonly on an internal or self-signed CA that Node doesn't trust out of the box. That surfaces as things like `self-signed certificate in certificate chain` (OIDC), `self-signed certificate` (Zulip), or an opaque `fetch failed`/connection error with no clear cause.
 
 **Recommended: trust the CA once, app-wide.** Set the standard Node.js environment variable to your CA's PEM certificate (or bundle), mounted into the container:
 
 | Variable | Required | Default / Example | Description |
 |----------|----------|---------|-------------|
-| `NODE_EXTRA_CA_CERTS` | No | `/certs/internal-ca.pem` | Adds this CA to Node's trust store for **every** TLS connection this process makes — OIDC, Rancher, Zulip, and SMTP all at once. This is a built-in Node.js mechanism, not specific to this app. |
+| `NODE_EXTRA_CA_CERTS` | No | `/certs/internal-ca.pem` | Adds this CA to Node's trust store for **every** TLS connection this process makes — OIDC, Zulip, and SMTP all at once. This is a built-in Node.js mechanism, not specific to this app. |
 
 This is the only setting most deployments need for self-signed/internal certificates.
 
-**If trusting the CA isn't an option** (a lab/test environment, or a cert you can't get the CA for), skip verification entirely with one flag — also app-wide, covering OIDC, Rancher, Zulip, and SMTP at once:
+**If trusting the CA isn't an option** (a lab/test environment, or a cert you can't get the CA for), skip verification entirely with one flag — also app-wide, covering OIDC, Zulip, and SMTP at once:
 
 | Variable | Required | Default / Example | Description |
 |----------|----------|---------|-------------|
-| `TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification entirely, for every one of this app's HTTPS/TLS clients at once (OIDC, Rancher, Zulip, SMTP). **Internal/test environments only** — this app makes no outbound connections besides these four, but disabling verification still means any of them could be silently impersonated. Prefer `NODE_EXTRA_CA_CERTS` above whenever possible. |
+| `TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification entirely, for every one of this app's HTTPS/TLS clients at once (OIDC, Zulip, SMTP). **Internal/test environments only** — this app makes no outbound connections besides these three, but disabling verification still means any of them could be silently impersonated. Prefer `NODE_EXTRA_CA_CERTS` above whenever possible. |
 
 Per-service variants of both settings exist for the rare case one service needs different handling than the rest (a different CA, or skipping verification for just that one service while the others stay verified):
 
@@ -169,11 +169,11 @@ Per-service variants of both settings exist for the rare case one service needs 
 |----------|----------|---------|-------------|
 | `OIDC_CA_CERT_PATH` | No | `/app/certs/ca.crt` | Trusts this CA for Keycloak/OIDC connections specifically, instead of (or in addition to) `NODE_EXTRA_CA_CERTS`. |
 | `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for OIDC specifically. |
-| `RANCHER_CA_CERT_PATH` | No | `/certs/rancher-ca.pem` | Trusts this CA for Rancher API connections specifically (see [Rancher Integration](#rancher-integration) below). |
-| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for the Rancher API specifically. |
 | `ZULIP_CA_CERT_PATH` | No | `/certs/zulip-ca.pem` | Trusts this CA for the Zulip API specifically (see [Release Notifications](#release-notifications) below). |
 | `ZULIP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for the Zulip API specifically. |
 | `SMTP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for SMTP specifically. SMTP has no CA-path override of its own — `NODE_EXTRA_CA_CERTS` already covers it. |
+
+(Rancher isn't in these lists — the dashboard's Rancher link is just a URL, not an API call this app makes, so it has no TLS configuration of its own.)
 
 A per-service `*_TLS_REJECT_UNAUTHORIZED` (or the global one) always wins over verification, regardless of any `*_CA_CERT_PATH`/`NODE_EXTRA_CA_CERTS` also being set. Every `*_TLS_REJECT_UNAUTHORIZED` variable, global included, is internal/test environments only — prefer trusting the actual CA whenever possible.
 
@@ -255,7 +255,7 @@ Admins have access to an "Admin" section:
 - **History**: A complete audit log of all reservations ever made, filterable by deployment or user.
 - **Cluster Management**: Add or remove clusters and deployments manually.
 - **Release Notifications**: Configure SMTP and/or Zulip, editable at runtime (unlike the auth-provider settings, these aren't environment variables — see below).
-- **Rancher Integration**: Configure the Rancher URL/API token, and map each cluster/deployment to the Rancher app it corresponds to (see below).
+- **Rancher Shortcut Link**: Give a cluster a Rancher URL and it shows up as a link on the dashboard (see below).
 
 ### Release Notifications
 
@@ -274,26 +274,11 @@ Passwords and API keys are stored in the database, never echoed back by `GET /ap
 
 > **"Could not reach the Zulip API: self-signed certificate" (or a bare "fetch failed"):** Your Zulip site is on an internal/self-signed CA. See [Self-Signed / Internal CA Certificates](#self-signed--internal-ca-certificates) above — `NODE_EXTRA_CA_CERTS` covers Zulip (and SMTP) at once; `ZULIP_CA_CERT_PATH` trusts a CA for Zulip specifically. The same applies to SMTP if it's on an internal CA, though nodemailer's own error will read differently (e.g. `self signed certificate`).
 
-### Rancher Integration
+### Rancher Shortcut Link
 
-If deployments are actually rolled out via Rancher — deploying a Helm/Catalog app under **Apps & Marketplace** — the dashboard can show that app's live status (Deployed, Failed, or a transitioning state like Upgrading) right next to each deployment, without leaving this tool.
+If deployments are actually rolled out via Rancher, it's often handy to jump straight from a cluster on this dashboard to that cluster's Rancher UI. Under **Admin → Clusters & Deployments**, give a cluster its **Rancher URL** (e.g. `https://rancher.example.com`) and Save — the dashboard then shows a **🚢 Rancher ↗** link on that cluster's card, opening it in a new tab.
 
-Each cluster is assumed to have its **own dedicated Rancher** (not one Rancher managing many downstream clusters), so the connection is configured per cluster, and a deployment's Rancher namespace is just its own name — there's no separate namespace field to fill in.
-
-**1. Create a Rancher API token.** In each cluster's Rancher, go to your user avatar (top right) → **Account & API Keys** → **Create API Key**. Copy the generated token.
-
-**2. Configure each cluster's connection.** Under **Admin → Clusters & Deployments**, each cluster has its own **Rancher URL** and **API Token** fields:
-- **Rancher URL**: that cluster's Rancher server base URL, e.g. `https://rancher.example.com`.
-- **API Token**: the token from step 1, for that same Rancher.
-- Click **Test Connection** to verify.
-
-**3. Map each deployment to its Rancher app.** Each deployment has a **Rancher app name** field — the Helm release name shown in Rancher under **Apps & Marketplace → Installed Apps**, inside the namespace matching that deployment's own name.
-
-A deployment whose cluster has no Rancher URL/token, or that has no app name itself, simply shows no status badge — this is entirely opt-in, cluster by cluster and deployment by deployment (no separate on/off setting). Status lookups are cached for 15 seconds to avoid hammering any one Rancher when multiple users have the dashboard open; a lookup that fails (wrong token, app renamed, Rancher unreachable) shows a "Rancher unavailable" badge rather than breaking the dashboard.
-
-When the deployed chart reports a version, it's shown right on the badge (e.g. "Deployed · v2.4.1") — the app's own version if the chart sets one, otherwise the chart's own packaging version as a fallback.
-
-If a cluster's Rancher is on an internal/self-signed CA (common on an intranet with no public internet access), see [Self-Signed / Internal CA Certificates](#self-signed--internal-ca-certificates) above — `NODE_EXTRA_CA_CERTS` covers every cluster's Rancher connection at once; `RANCHER_CA_CERT_PATH` trusts a CA for Rancher specifically.
+That's the whole feature: just a link, per cluster, with no separate namespace/app mapping to keep in sync and no live status polling — this app doesn't call Rancher's API at all. A cluster with no Rancher URL set simply shows no link.
 
 ## API Reference
 
@@ -325,12 +310,10 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/admin/clusters` | Creates a new cluster. Body: `{ name: string, environment: string }`. |
-| `PUT` | `/api/admin/clusters/:id` | Updates a cluster's name, environment, or its own Rancher connection. Body: `{ name?: string, environment?: string, rancher_url?: string \| null, rancher_api_token?: string }`. `rancher_api_token` is only overwritten when non-empty (same convention as the SMTP/Zulip secrets below). |
+| `PUT` | `/api/admin/clusters/:id` | Updates a cluster's name, environment, or its Rancher shortcut link. Body: `{ name?: string, environment?: string, rancher_url?: string \| null }`. |
 | `DELETE` | `/api/admin/clusters/:id` | Deletes a cluster and its deployments (requires all deployments to be unreserved). |
 | `POST` | `/api/admin/clusters/:id/deployments` | Adds a deployment to a cluster. Body: `{ name: string }`. |
-| `POST` | `/api/admin/clusters/:id/test-rancher` | Verifies this cluster's configured Rancher URL/API token work, independent of any deployment mapping. |
 | `DELETE` | `/api/admin/deployments/:id` | Deletes a deployment (requires it to be unreserved). |
-| `PUT` | `/api/admin/deployments/:id/rancher` | Maps (or clears) the Rancher app this deployment corresponds to. Body: `{ rancher_app_name?: string \| null }`. Its Rancher namespace isn't set here — it's just the deployment's own name. |
 | `GET` | `/api/admin/users` | Lists all registered users. |
 | `PUT` | `/api/admin/users/:id/role` | Updates a user's role. Body: `{ role: 'admin' \| 'user' }`. |
 | `PUT` | `/api/admin/users/:id/email` | Sets (or clears) a user's email address. Body: `{ email: string \| null }`. |

@@ -1059,41 +1059,27 @@ a {
   color: var(--accent-primary);
 }
 
-/* ---------- Rancher App Status Badge ---------- */
-/* Live status of the Rancher Helm app a deployment is mapped to (see
-   lib/rancher.js / App.renderRancherBadge). Reuses the same status colors
-   as .status-dot so "deployed"/"failed" read consistently with the
-   reservation dot's green/red language. */
-.rancher-badge {
+/* ---------- Rancher Shortcut Link ---------- */
+/* Opens a cluster's own Rancher UI in a new tab — shown next to the
+   env-badge only when that cluster has a rancher_url set. */
+.rancher-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
   border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: 600;
   white-space: nowrap;
+  text-decoration: none;
+  transition: all var(--transition-fast);
 }
 
-.rancher-badge.rancher-deployed {
-  background: var(--status-available-bg);
-  color: var(--status-available);
-}
-
-.rancher-badge.rancher-failed,
-.rancher-badge.rancher-unavailable {
-  background: var(--status-reserved-other-bg);
-  color: var(--status-reserved-other);
-}
-
-.rancher-badge.rancher-transitioning {
-  background: var(--status-reserved-self-bg);
-  color: var(--status-reserved-self);
-}
-
-.rancher-badge.rancher-unknown {
-  background: var(--bg-glass);
-  color: var(--text-tertiary);
+.rancher-link:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
 }
 
 /* ============================================
@@ -1156,9 +1142,9 @@ a {
   gap: var(--space-sm);
 }
 
-/* Inline "this cluster's own Rancher URL/API token" fields, next to the
+/* Inline "this cluster's Rancher shortcut link" field, next to the
    cluster's name/delete-button header row. Each cluster has its own
-   Rancher, so this connection is configured per cluster, not globally. */
+   Rancher, so the link is configured per cluster, not globally. */
 .admin-cluster-rancher {
   display: flex;
   align-items: center;
@@ -1205,26 +1191,6 @@ a {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-sm);
-}
-
-/* Inline "map this deployment to a Rancher namespace/app" fields. */
-.admin-deployment-rancher {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  font-size: var(--text-xs);
-}
-
-.admin-deployment-rancher input {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
 }
 
 /* Admin forms */
