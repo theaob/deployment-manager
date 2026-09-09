@@ -229,10 +229,10 @@ const App = {
           <button class="nav-link ${active === 'dashboard' ? 'active' : ''}" onclick="App.navigate('dashboard')">
             📊 Dashboard
           </button>
-          <button class="nav-link ${active === 'history' ? 'active' : ''}" onclick="App.navigate('history')">
-            📋 History
-          </button>
           ${isAdmin ? `
+            <button class="nav-link ${active === 'history' ? 'active' : ''}" onclick="App.navigate('history')">
+              📋 History
+            </button>
             <button class="nav-link ${active === 'admin' ? 'active' : ''}" onclick="App.navigate('admin')">
               ⚙️ Admin
             </button>
