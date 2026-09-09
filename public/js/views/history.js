@@ -55,6 +55,16 @@ const HistoryView = {
   },
 
   async afterRender() {
+    // The backend's /api/admin/history is admin-only — guard the route the
+    // same way AdminView does, rather than letting a non-admin land here
+    // and silently see an empty "No reservation history found" table (the
+    // 403 from loadHistory() used to be swallowed instead of surfaced).
+    if (App.user?.role !== 'admin') {
+      App.showToast('Admin access required', 'error');
+      App.navigate('dashboard');
+      return;
+    }
+
     await this.loadClusters();
     await this.loadHistory();
     this.setupFilters();
@@ -85,15 +95,7 @@ const HistoryView = {
       let url = `/api/admin/history?limit=${this.limit}&offset=${this.page * this.limit}`;
       if (clusterId) url += `&cluster_id=${clusterId}`;
 
-      // Try admin endpoint first, fall back to basic
-      let data;
-      try {
-        data = await App.api(url);
-      } catch {
-        // If not admin, use per-deployment history — show only user's reservations
-        data = { history: [], total: 0 };
-      }
-
+      const data = await App.api(url);
       let history = data.history || [];
 
       // Client-side status filter
