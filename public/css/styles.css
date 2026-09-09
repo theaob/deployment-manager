@@ -161,6 +161,12 @@
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-bounce: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Same curve as --transition-bounce, without a bundled duration — for an
+     `animation:` shorthand, where a token that already carries a duration
+     (like --transition-bounce) lands in the *delay* slot instead, not the
+     timing-function slot the way it does in a `transition:` shorthand. See
+     .modal's animation below. */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* ---------- Reset & Base ---------- */
@@ -981,6 +987,31 @@ a {
   text-overflow: ellipsis;
 }
 
+/* Shows a reserved deployment's note — hover for the title tooltip, click
+   for the full note in a modal (useful once a note is longer than a
+   tooltip comfortably shows). Only rendered when a note exists. */
+.note-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.note-info-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
 .deployment-meta {
   display: flex;
   align-items: center;
@@ -1416,7 +1447,7 @@ a {
   align-items: center;
   justify-content: center;
   z-index: 200;
-  animation: fadeIn 0.2s ease backwards;
+  animation: fadeIn 0.12s ease backwards;
   padding: var(--space-lg);
 }
 
@@ -1432,7 +1463,13 @@ a {
   max-width: 500px;
   width: 100%;
   box-shadow: var(--shadow-xl);
-  animation: modalIn 0.3s var(--transition-bounce) both;
+  /* Was `0.3s var(--transition-bounce)` — since --transition-bounce
+     already bundles "500ms cubic-bezier(...)", that 500ms landed in this
+     shorthand's *delay* slot (the second <time> found), not stacked into
+     the duration: the modal sat invisible for 500ms before its 0.3s
+     pop-in even started. Using the duration-free --ease-bounce here
+     removes that delay entirely, and shortens the pop-in itself too. */
+  animation: modalIn 0.16s var(--ease-bounce) both;
 }
 
 @keyframes modalIn {
@@ -1450,6 +1487,21 @@ a {
   font-size: var(--text-lg);
   font-weight: 600;
   margin-bottom: var(--space-lg);
+}
+
+.note-modal-meta {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  margin-top: -12px;
+  margin-bottom: var(--space-md);
+}
+
+.note-modal-text {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .modal-actions {

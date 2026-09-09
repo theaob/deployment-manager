@@ -10,6 +10,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 - **Cluster Management**: Define clusters and the deployments within them.
 - **Reservation System**:
   - Users can reserve any deployment, optionally for a fixed duration — the reservation is auto-released once it elapses.
+  - An optional note on a reservation is visible to everyone, not just its owner — an ℹ️ next to the deployment name shows it on hover, or in full in a modal on click.
   - Reservations are time-stamped and visible in history.
   - Admins can see all reservations across all deployments, and force-release any of them.
   - Users can see their own history.
