@@ -142,10 +142,31 @@ The following environment variables can be set to configure the server's basic b
 | `JWT_SECRET` | No (recommended for prod) | `deployment-manager-secret-key-change-in-production` | Secret key used to sign and verify JSON Web Tokens (JWT). |
 | `NODE_ENV` | No | `development` / `production` | Node environment state. |
 | `TRUST_PROXY` | No | `true` | Set to `true` only when a reverse proxy (e.g. the bundled Nginx service) sits in front of this container and terminates TLS. Makes the app honor `X-Forwarded-Proto`/`X-Forwarded-For` so OIDC cookies get the `Secure` flag only when the client actually connected over HTTPS. **Do not enable this if clients can reach the container directly** — without a real proxy in front, a client could spoof these headers itself. |
-| `RANCHER_CA_CERT_PATH` | No | `/certs/rancher-ca.pem` | Path to a PEM CA certificate (or bundle) to trust when calling the Rancher API — for a Rancher instance on an internal/self-signed CA (see [Rancher Integration](#rancher-integration) below). |
-| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification for the Rancher API entirely. Internal/test environments only — prefer `RANCHER_CA_CERT_PATH`. |
 
 By default, the app uses a simple username-based login (no password) — the first user to sign in becomes admin. This is the fallback whenever neither Trusted Header SSO nor OIDC below is configured.
+
+### Self-Signed / Internal CA Certificates
+
+This app talks to several other services over HTTPS — Keycloak (OIDC), each cluster's Rancher, Zulip, and an SMTP server — and on an intranet with no public internet access, some or all of them are commonly on an internal or self-signed CA that Node doesn't trust out of the box. That surfaces as things like `self-signed certificate in certificate chain` (OIDC), `self-signed certificate` (Rancher, Zulip), or an opaque `fetch failed`/connection error with no clear cause.
+
+**Recommended: trust the CA once, app-wide.** Set the standard Node.js environment variable to your CA's PEM certificate (or bundle), mounted into the container:
+
+| Variable | Required | Default / Example | Description |
+|----------|----------|---------|-------------|
+| `NODE_EXTRA_CA_CERTS` | No | `/certs/internal-ca.pem` | Adds this CA to Node's trust store for **every** TLS connection this process makes — OIDC, Rancher, Zulip, and SMTP all at once. This is a built-in Node.js mechanism, not specific to this app. |
+
+This is the only setting most deployments need for self-signed/internal certificates. Per-service alternatives exist for the rare case a service needs different handling than the rest (a different CA, or — internal/test environments only — skipping verification entirely for just one service):
+
+| Variable | Required | Default / Example | Description |
+|----------|----------|---------|-------------|
+| `OIDC_CA_CERT_PATH` | No | `/app/certs/ca.crt` | Trusts this CA for Keycloak/OIDC connections specifically, instead of (or in addition to) `NODE_EXTRA_CA_CERTS`. |
+| `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for OIDC requests. |
+| `RANCHER_CA_CERT_PATH` | No | `/certs/rancher-ca.pem` | Trusts this CA for Rancher API connections specifically (see [Rancher Integration](#rancher-integration) below). |
+| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for the Rancher API. |
+| `ZULIP_CA_CERT_PATH` | No | `/certs/zulip-ca.pem` | Trusts this CA for the Zulip API specifically (see [Release Notifications](#release-notifications) below). |
+| `ZULIP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for the Zulip API. |
+
+Every `*_TLS_REJECT_UNAUTHORIZED` variable is internal/test environments only — prefer trusting the actual CA (`NODE_EXTRA_CA_CERTS`, or the per-service `*_CA_CERT_PATH`) whenever possible. SMTP has no per-service override; give it a certificate `NODE_EXTRA_CA_CERTS` trusts.
 
 ### Trusted Header SSO (Single Sign-On)
 
@@ -183,10 +204,8 @@ To enable OIDC, set the following environment variables:
 | `OIDC_CLIENT_ID` | Yes | `deployment-manager` | The Client ID configured in Keycloak. |
 | `OIDC_REDIRECT_URI` | Yes | `http://localhost:3000/api/auth/oidc/callback` | The callback URL registered in Keycloak. |
 | `OIDC_CLIENT_SECRET` | No | `your-client-secret` | The Client Secret. Only required for confidential clients; omit for public clients. |
-| `OIDC_CA_CERT_PATH` | No | `/app/certs/ca.crt` | Path to a PEM CA certificate to trust when connecting to Keycloak, in addition to Node's default trust store. Use this when Keycloak's TLS certificate is signed by an internal/intranet CA (or is self-signed) — fixes `self-signed certificate in certificate chain` errors. |
-| `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification entirely for OIDC requests. Only for internal/test environments — prefer `OIDC_CA_CERT_PATH` whenever possible. |
 
-> **Certificate errors:** If OIDC login fails with `self-signed certificate in certificate chain`, Node doesn't trust the CA that issued Keycloak's TLS certificate. Export that CA's certificate as PEM, mount it into the container, and set `OIDC_CA_CERT_PATH` to its path — this trusts your CA specifically rather than disabling verification.
+> **Certificate errors:** If OIDC login fails with `self-signed certificate in certificate chain`, Node doesn't trust the CA that issued Keycloak's TLS certificate — see [Self-Signed / Internal CA Certificates](#self-signed--internal-ca-certificates) above (`NODE_EXTRA_CA_CERTS`, or `OIDC_CA_CERT_PATH` to trust it for Keycloak specifically).
 
 > **"State parameter mismatch or verification session expired":** This means the `oidc_state`/`oidc_code_verifier` cookies set at `/api/auth/oidc/login` never made it back on the callback request. The app only marks these cookies `Secure` when the request actually arrived over HTTPS — directly, or via `X-Forwarded-Proto: https` from a reverse proxy *if you've set `TRUST_PROXY=true`*. Plain HTTP (with or without Nginx in front, as long as `TRUST_PROXY` isn't set) already works correctly out of the box. If you still see this error, check for: a proxy not forwarding `Set-Cookie` back to the client, a different host/port between the login and callback requests, or the Keycloak login taking longer than the 5-minute cookie lifetime.
 
@@ -244,6 +263,8 @@ Passwords and API keys are stored in the database, never echoed back by `GET /ap
 
 > These settings live in the database and are editable from the Admin panel at runtime — unlike `OIDC_*`/`AD_*`/`SSO_HEADER`, there's no environment variable equivalent.
 
+> **"Could not reach the Zulip API: self-signed certificate" (or a bare "fetch failed"):** Your Zulip site is on an internal/self-signed CA. See [Self-Signed / Internal CA Certificates](#self-signed--internal-ca-certificates) above — `NODE_EXTRA_CA_CERTS` covers Zulip (and SMTP) at once; `ZULIP_CA_CERT_PATH` trusts a CA for Zulip specifically. The same applies to SMTP if it's on an internal CA, though nodemailer's own error will read differently (e.g. `self signed certificate`).
+
 ### Rancher Integration
 
 If deployments are actually rolled out via Rancher — deploying a Helm/Catalog app under **Apps & Marketplace** — the dashboard can show that app's live status (Deployed, Failed, or a transitioning state like Upgrading) right next to each deployment, without leaving this tool.
@@ -263,7 +284,7 @@ A deployment whose cluster has no Rancher URL/token, or that has no app name its
 
 When the deployed chart reports a version, it's shown right on the badge (e.g. "Deployed · v2.4.1") — the app's own version if the chart sets one, otherwise the chart's own packaging version as a fallback.
 
-If a cluster's Rancher is on an internal/self-signed CA (common on an intranet with no public internet access), see the `RANCHER_CA_CERT_PATH` / `RANCHER_TLS_REJECT_UNAUTHORIZED` environment variables above — same approach as the Keycloak/OIDC TLS configuration, shared across every cluster's Rancher connection.
+If a cluster's Rancher is on an internal/self-signed CA (common on an intranet with no public internet access), see [Self-Signed / Internal CA Certificates](#self-signed--internal-ca-certificates) above — `NODE_EXTRA_CA_CERTS` covers every cluster's Rancher connection at once; `RANCHER_CA_CERT_PATH` trusts a CA for Rancher specifically.
 
 ## API Reference
 
