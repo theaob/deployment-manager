@@ -155,18 +155,27 @@ This app talks to several other services over HTTPS — Keycloak (OIDC), each cl
 |----------|----------|---------|-------------|
 | `NODE_EXTRA_CA_CERTS` | No | `/certs/internal-ca.pem` | Adds this CA to Node's trust store for **every** TLS connection this process makes — OIDC, Rancher, Zulip, and SMTP all at once. This is a built-in Node.js mechanism, not specific to this app. |
 
-This is the only setting most deployments need for self-signed/internal certificates. Per-service alternatives exist for the rare case a service needs different handling than the rest (a different CA, or — internal/test environments only — skipping verification entirely for just one service):
+This is the only setting most deployments need for self-signed/internal certificates.
+
+**If trusting the CA isn't an option** (a lab/test environment, or a cert you can't get the CA for), skip verification entirely with one flag — also app-wide, covering OIDC, Rancher, Zulip, and SMTP at once:
+
+| Variable | Required | Default / Example | Description |
+|----------|----------|---------|-------------|
+| `TLS_REJECT_UNAUTHORIZED` | No | `false` | Set to `false` to skip TLS certificate verification entirely, for every one of this app's HTTPS/TLS clients at once (OIDC, Rancher, Zulip, SMTP). **Internal/test environments only** — this app makes no outbound connections besides these four, but disabling verification still means any of them could be silently impersonated. Prefer `NODE_EXTRA_CA_CERTS` above whenever possible. |
+
+Per-service variants of both settings exist for the rare case one service needs different handling than the rest (a different CA, or skipping verification for just that one service while the others stay verified):
 
 | Variable | Required | Default / Example | Description |
 |----------|----------|---------|-------------|
 | `OIDC_CA_CERT_PATH` | No | `/app/certs/ca.crt` | Trusts this CA for Keycloak/OIDC connections specifically, instead of (or in addition to) `NODE_EXTRA_CA_CERTS`. |
-| `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for OIDC requests. |
+| `OIDC_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for OIDC specifically. |
 | `RANCHER_CA_CERT_PATH` | No | `/certs/rancher-ca.pem` | Trusts this CA for Rancher API connections specifically (see [Rancher Integration](#rancher-integration) below). |
-| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for the Rancher API. |
+| `RANCHER_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for the Rancher API specifically. |
 | `ZULIP_CA_CERT_PATH` | No | `/certs/zulip-ca.pem` | Trusts this CA for the Zulip API specifically (see [Release Notifications](#release-notifications) below). |
-| `ZULIP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification entirely for the Zulip API. |
+| `ZULIP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for the Zulip API specifically. |
+| `SMTP_TLS_REJECT_UNAUTHORIZED` | No | `false` | Skips TLS certificate verification for SMTP specifically. SMTP has no CA-path override of its own — `NODE_EXTRA_CA_CERTS` already covers it. |
 
-Every `*_TLS_REJECT_UNAUTHORIZED` variable is internal/test environments only — prefer trusting the actual CA (`NODE_EXTRA_CA_CERTS`, or the per-service `*_CA_CERT_PATH`) whenever possible. SMTP has no per-service override; give it a certificate `NODE_EXTRA_CA_CERTS` trusts.
+A per-service `*_TLS_REJECT_UNAUTHORIZED` (or the global one) always wins over verification, regardless of any `*_CA_CERT_PATH`/`NODE_EXTRA_CA_CERTS` also being set. Every `*_TLS_REJECT_UNAUTHORIZED` variable, global included, is internal/test environments only — prefer trusting the actual CA whenever possible.
 
 ### Trusted Header SSO (Single Sign-On)
 
