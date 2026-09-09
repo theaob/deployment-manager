@@ -1,6 +1,7 @@
 const { Issuer, generators, custom } = require('openid-client');
 const https = require('https');
 const fs = require('fs');
+const { shouldRejectUnauthorized } = require('../lib/tls');
 
 let oidcClient = null;
 let httpDefaultsConfigured = false;
@@ -28,8 +29,11 @@ function isOidcEnabled() {
  *   OIDC_CA_CERT_PATH          — Path to a PEM CA certificate (or bundle) to trust,
  *                                 in addition to Node's default trust store.
  *   OIDC_TLS_REJECT_UNAUTHORIZED — Set to "false" to skip certificate verification
- *                                 entirely. Only for internal/test environments —
- *                                 prefer OIDC_CA_CERT_PATH whenever possible.
+ *                                 entirely for OIDC specifically (or set the global
+ *                                 TLS_REJECT_UNAUTHORIZED to do this for OIDC, Rancher,
+ *                                 Zulip, and SMTP all at once — see lib/tls.js). Only
+ *                                 for internal/test environments — prefer
+ *                                 OIDC_CA_CERT_PATH/NODE_EXTRA_CA_CERTS whenever possible.
  */
 function configureHttpDefaults() {
   if (httpDefaultsConfigured) {
@@ -38,7 +42,7 @@ function configureHttpDefaults() {
   httpDefaultsConfigured = true;
 
   const caCertPath = process.env.OIDC_CA_CERT_PATH;
-  const rejectUnauthorized = process.env.OIDC_TLS_REJECT_UNAUTHORIZED !== 'false';
+  const rejectUnauthorized = shouldRejectUnauthorized('OIDC_TLS_REJECT_UNAUTHORIZED');
 
   // Nothing to customize — use Node's default HTTPS behavior.
   if (!caCertPath && rejectUnauthorized) {
@@ -53,7 +57,7 @@ function configureHttpDefaults() {
   }
 
   if (!rejectUnauthorized) {
-    console.warn('[OIDC] WARNING: OIDC_TLS_REJECT_UNAUTHORIZED=false — TLS certificate verification is DISABLED for the OIDC provider. Do not use this in production.');
+    console.warn('[OIDC] WARNING: TLS certificate verification is DISABLED for the OIDC provider (TLS_REJECT_UNAUTHORIZED or OIDC_TLS_REJECT_UNAUTHORIZED=false). Do not use this in production.');
     // Must be a real Agent instance — openid-client passes this straight to
     // https.request(), which rejects a plain { rejectUnauthorized: false } object.
     httpOptions.agent = new https.Agent({ rejectUnauthorized: false });
