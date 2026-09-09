@@ -320,7 +320,17 @@ router.post('/settings/test', async (req, res) => {
 
   const settings = getSettings();
   if (settings.smtp_enabled !== 'true' && settings.zulip_enabled !== 'true') {
-    return res.status(400).json({ error: 'Enable and configure at least one notification channel first.' });
+    // A common trap: filling in a channel's fields doesn't enable it — the
+    // checkbox above the fields does, and it's an easy thing to miss. Say
+    // so explicitly when that looks like what happened, instead of leaving
+    // the admin to guess why "Enable and configure a channel" doesn't seem
+    // to apply to them.
+    const smtpFieldsFilled = !!settings.smtp_host;
+    const zulipFieldsFilled = !!(settings.zulip_site || settings.zulip_bot_email || settings.zulip_bot_api_key);
+    const hint = smtpFieldsFilled || zulipFieldsFilled
+      ? ' It looks like some fields are filled in, but the "Email (SMTP)" or "Zulip" checkbox above them isn\'t checked — check it, then Save Settings.'
+      : '';
+    return res.status(400).json({ error: `Enable and configure at least one notification channel first.${hint}` });
   }
 
   const results = await sendTestNotification(admin.email);
