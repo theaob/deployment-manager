@@ -206,6 +206,11 @@ const DashboardView = {
         <div class="deployment-info">
           <span class="status-dot ${statusClass}"></span>
           <span class="deployment-name" title="${this.escapeHtml(dep.name)}">${this.escapeHtml(dep.name)}</span>
+          ${isReserved && dep.reservation.notes ? `
+            <button type="button" class="note-info-btn" title="${this.escapeAttr(dep.reservation.notes)}" onclick="DashboardView.openNoteModal('${dep.id}')" aria-label="View reservation note">
+              ℹ️
+            </button>
+          ` : ''}
         </div>
         <div class="deployment-meta">
           ${isReserved ? `
@@ -354,6 +359,48 @@ const DashboardView = {
     document.getElementById('reserve-notes-input').focus();
   },
 
+  /**
+   * Shows a reservation's note in full. Looked up by deployment id from
+   * the already-loaded cluster data (rather than passing the note text
+   * itself through the onclick attribute) so arbitrary note content —
+   * quotes, HTML, anything a user typed — never has to be embedded in an
+   * HTML attribute or JS string literal. The note is written into the DOM
+   * via textContent for the same reason: safe regardless of what it says.
+   */
+  openNoteModal(deploymentId) {
+    let dep = null;
+    for (const cluster of this.clusters || []) {
+      dep = cluster.deployments.find(d => d.id === deploymentId);
+      if (dep) break;
+    }
+    if (!dep?.reservation?.notes) return;
+
+    const existing = document.getElementById('note-modal-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'note-modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>Note — ${this.escapeHtml(dep.name)}</h3>
+        <p class="note-modal-meta">by ${this.escapeHtml(dep.reservation.display_name)}</p>
+        <p class="note-modal-text"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="note-modal-close">Close</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.note-modal-text').textContent = dep.reservation.notes;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.getElementById('note-modal-close').addEventListener('click', close);
+  },
+
   async releaseDeployment(deploymentId) {
     try {
       await App.api(`/api/deployments/${deploymentId}/release`, {
@@ -416,6 +463,25 @@ const DashboardView = {
     return div.innerHTML;
   },
 
+  /**
+   * Escapes a string for safe use inside a double-quoted HTML attribute
+   * (e.g. title="..."). escapeHtml() above isn't enough for that: setting
+   * textContent then reading innerHTML escapes &/</> but leaves quote
+   * characters untouched (they're only special in attribute syntax, not in
+   * text content), so a note containing a `"` would otherwise break out of
+   * the attribute. Needed here because, unlike most other interpolated
+   * strings in this view, a reservation's note is arbitrary user text
+   * shown to every viewer of the dashboard — not just its author.
+   */
+  escapeAttr(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  },
+
   destroy() {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
@@ -427,5 +493,7 @@ const DashboardView = {
     }
     const modal = document.getElementById('reserve-modal-overlay');
     if (modal) modal.remove();
+    const noteModal = document.getElementById('note-modal-overlay');
+    if (noteModal) noteModal.remove();
   },
 };
