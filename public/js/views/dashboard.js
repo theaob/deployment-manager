@@ -163,6 +163,11 @@ const DashboardView = {
               <span class="cluster-name">${this.escapeHtml(cluster.name)}</span>
               <div class="cluster-meta">
                 <span class="env-badge ${cluster.environment}">${cluster.environment}</span>
+                ${cluster.rancher_url ? `
+                  <a class="rancher-link" href="${this.escapeHtml(cluster.rancher_url)}" target="_blank" rel="noopener noreferrer" title="Open ${this.escapeHtml(cluster.name)} in Rancher">
+                    🚢 Rancher ↗
+                  </a>
+                ` : ''}
               </div>
             </div>
             <div class="cluster-stats">
@@ -203,7 +208,6 @@ const DashboardView = {
           <span class="deployment-name" title="${this.escapeHtml(dep.name)}">${this.escapeHtml(dep.name)}</span>
         </div>
         <div class="deployment-meta">
-          ${dep.rancher_status ? App.renderRancherBadge(dep.rancher_status) : ''}
           ${isReserved ? `
             <span class="reserved-by">
               <span class="user-icon">${App.getInitials(dep.reservation.display_name)}</span>

@@ -5,7 +5,6 @@ const { adminOnly } = require('../middleware/auth');
 const { getSettings, setSettings } = require('../lib/settings');
 const { sendTestNotification } = require('../lib/notifications');
 const { isOidcEnabled } = require('../middleware/oidc-auth');
-const rancher = require('../lib/rancher');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,6 +14,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // All admin routes require admin role
 router.use(adminOnly);
+
+/**
+ * Strips a leftover rancher_api_token off a cluster row before it reaches
+ * a client, in case one is still sitting in the database from the earlier
+ * Rancher-API-status design (see db/database.js) — see the matching helper
+ * in routes/clusters.js for the full explanation.
+ */
+function redactCluster(cluster) {
+  if (!cluster) return cluster;
+  const { rancher_api_token, ...rest } = cluster;
+  return rest;
+}
 
 /**
  * POST /api/admin/clusters
@@ -33,25 +44,20 @@ router.post('/clusters', (req, res) => {
   db.prepare('INSERT INTO clusters (id, name, environment) VALUES (?, ?, ?)').run(id, name, environment);
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
-  res.status(201).json({ cluster: rancher.redactCluster(cluster) });
+  res.status(201).json({ cluster: redactCluster(cluster) });
 });
 
 /**
  * PUT /api/admin/clusters/:id
  * Update a cluster.
- * Body: { name?: string, environment?: string, rancher_url?: string | null, rancher_api_token?: string }
- *   rancher_url — the base URL of this cluster's own Rancher server (each
- *   cluster has its own, not one Rancher shared across clusters). Pass an
- *   empty string/null to clear it.
- *   rancher_api_token — a Rancher API token for that server. Only
- *   overwritten when a non-empty value is sent — omit or send '' to keep
- *   the currently stored token.
- *   Both are used to look up this cluster's deployments' live app status
- *   (see lib/rancher.js). Omit either field to leave it as-is.
+ * Body: { name?: string, environment?: string, rancher_url?: string | null }
+ *   rancher_url — an optional shortcut link to this cluster's own Rancher
+ *   UI, shown on the dashboard. Just a URL — not used to call Rancher's
+ *   API. Pass an empty string/null to clear it; omit to leave it as-is.
  */
 router.put('/clusters/:id', (req, res) => {
   const { id } = req.params;
-  const { name, environment, rancher_url: rancherUrlRaw, rancher_api_token: rancherApiTokenRaw } = req.body;
+  const { name, environment, rancher_url: rancherUrlRaw } = req.body;
 
   const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
   if (!cluster) {
@@ -61,40 +67,16 @@ router.put('/clusters/:id', (req, res) => {
   const rancherUrl = rancherUrlRaw !== undefined
     ? (String(rancherUrlRaw).trim() || null)
     : cluster.rancher_url;
-  // Like the SMTP/Zulip secrets: a non-empty value overwrites, anything
-  // else (omitted, or sent blank to avoid re-typing it) keeps the current one.
-  const rancherApiToken = rancherApiTokenRaw ? String(rancherApiTokenRaw) : cluster.rancher_api_token;
 
-  db.prepare('UPDATE clusters SET name = ?, environment = ?, rancher_url = ?, rancher_api_token = ? WHERE id = ?').run(
+  db.prepare('UPDATE clusters SET name = ?, environment = ?, rancher_url = ? WHERE id = ?').run(
     name || cluster.name,
     environment || cluster.environment,
     rancherUrl,
-    rancherApiToken,
     id
   );
 
   const updated = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
-  res.json({ cluster: rancher.redactCluster(updated) });
-});
-
-/**
- * POST /api/admin/clusters/:id/test-rancher
- * Verifies this cluster's configured Rancher URL/API token actually work,
- * independent of any specific deployment/app mapping.
- */
-router.post('/clusters/:id/test-rancher', async (req, res) => {
-  const { id } = req.params;
-  const cluster = db.prepare('SELECT * FROM clusters WHERE id = ?').get(id);
-  if (!cluster) {
-    return res.status(404).json({ error: 'Cluster not found' });
-  }
-
-  try {
-    const result = await rancher.testConnection({ rancherUrl: cluster.rancher_url, rancherApiToken: cluster.rancher_api_token });
-    res.json({ message: `Connected to Rancher (server version: ${result.version})` });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  res.json({ cluster: redactCluster(updated) });
 });
 
 /**
@@ -175,31 +157,6 @@ router.delete('/deployments/:id', (req, res) => {
 
   db.prepare('DELETE FROM deployments WHERE id = ?').run(id);
   res.json({ message: 'Deployment deleted successfully' });
-});
-
-/**
- * PUT /api/admin/deployments/:id/rancher
- * Maps (or clears) the Rancher Helm app this deployment corresponds to.
- * Body: { rancher_app_name?: string | null }
- * Its Rancher namespace isn't set here — it's just this deployment's own
- * name (see lib/rancher.js). Also requires the owning cluster to have a
- * Rancher URL/API token set (see PUT /clusters/:id) before a status lookup
- * will actually happen.
- */
-router.put('/deployments/:id/rancher', (req, res) => {
-  const { id } = req.params;
-
-  const deployment = db.prepare('SELECT * FROM deployments WHERE id = ?').get(id);
-  if (!deployment) {
-    return res.status(404).json({ error: 'Deployment not found' });
-  }
-
-  const appName = typeof req.body.rancher_app_name === 'string' ? req.body.rancher_app_name.trim() : '';
-
-  db.prepare('UPDATE deployments SET rancher_app_name = ? WHERE id = ?').run(appName || null, id);
-
-  const updated = db.prepare('SELECT * FROM deployments WHERE id = ?').get(id);
-  res.json({ deployment: updated });
 });
 
 /**
