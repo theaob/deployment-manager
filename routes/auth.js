@@ -277,11 +277,19 @@ router.get('/oidc/callback', async (req, res) => {
       });
     }
 
-    // Extract username (sub/preferred_username/email)
-    const username = (claims.preferred_username || claims.email || claims.sub || '').trim();
-    if (!username) {
-      return res.status(400).send('OIDC authentication failed: No username claim found in ID token.');
+    // The account is keyed on `sub` — the IdP's immutable subject id.
+    // preferred_username/email are user-editable (or admin-renamable) in
+    // Keycloak, so matching on them would let whoever holds a given
+    // username *now* inherit the account (and role) of whoever held it
+    // before.
+    const sub = typeof claims.sub === 'string' ? claims.sub.trim() : '';
+    if (!sub) {
+      return res.status(400).send('OIDC authentication failed: No subject (sub) claim found in ID token.');
     }
+
+    // Username is only used to name a newly created account (and to link a
+    // pre-existing one, below) — never to find the account on later logins.
+    const username = (claims.preferred_username || claims.email || sub).trim();
 
     // Extract display name
     const displayName = (claims.name || `${claims.given_name || ''} ${claims.family_name || ''}`.trim() || username).trim();
@@ -289,25 +297,49 @@ router.get('/oidc/callback', async (req, res) => {
     const cleanUsername = username.toLowerCase();
     const claimedEmail = typeof claims.email === 'string' ? claims.email.trim() : '';
 
-    // Look up or auto-register user in SQLite
-    let user = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
+    let user = db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(sub);
 
     if (!user) {
-      const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-      const role = userCount === 0 ? 'admin' : 'user';
-      const id = uuidv4();
+      const existing = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
 
-      db.prepare('INSERT INTO users (id, username, display_name, email, role) VALUES (?, ?, ?, ?, ?)').run(
-        id, cleanUsername, displayName, claimedEmail || null, role
-      );
+      if (existing && existing.oidc_sub) {
+        // The username is already bound to a *different* IdP identity —
+        // e.g. the original holder was renamed or deleted in Keycloak and
+        // someone else now has this username. Refuse rather than hand over
+        // that account; an admin has to sort it out.
+        console.warn(`[OIDC] Refused login for sub "${sub}": username "${cleanUsername}" is already linked to another identity.`);
+        return res.status(409).send(`OIDC authentication failed: the username "${cleanUsername}" is already linked to a different account. Contact an administrator.`);
+      }
 
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-    } else if (claimedEmail && user.email !== claimedEmail) {
-      // Keep the email in sync with the IdP on every login — Keycloak is
-      // the source of truth for identity once OIDC is configured, so this
-      // intentionally overrides any value an admin set by hand.
-      db.prepare('UPDATE users SET email = ? WHERE id = ?').run(claimedEmail, user.id);
-      user.email = claimedEmail;
+      if (existing) {
+        // A user created before OIDC was enabled (local/SSO-header mode) or
+        // before accounts were linked by sub: bind it to this identity on
+        // its first OIDC login, keeping its history and role.
+        db.prepare('UPDATE users SET oidc_sub = ? WHERE id = ?').run(sub, existing.id);
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(existing.id);
+      } else {
+        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        const role = userCount === 0 ? 'admin' : 'user';
+        const id = uuidv4();
+
+        db.prepare('INSERT INTO users (id, username, display_name, email, role, oidc_sub) VALUES (?, ?, ?, ?, ?, ?)').run(
+          id, cleanUsername, displayName, claimedEmail || null, role, sub
+        );
+
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+      }
+    }
+
+    // Keep display name and email in sync with the IdP on every login —
+    // Keycloak is the source of truth for identity once OIDC is configured,
+    // so this intentionally overrides any value an admin set by hand. The
+    // username is left alone: it's the app-side handle, and changing it
+    // could collide with another account's.
+    if (displayName !== user.display_name || (claimedEmail && claimedEmail !== user.email)) {
+      const email = claimedEmail || user.email;
+      db.prepare('UPDATE users SET display_name = ?, email = ? WHERE id = ?').run(displayName, email, user.id);
+      user.display_name = displayName;
+      user.email = email;
     }
 
     // Generate app JWT

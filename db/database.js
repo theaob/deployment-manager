@@ -82,6 +82,12 @@ const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.na
 if (!userColumns.includes('email')) {
   db.exec('ALTER TABLE users ADD COLUMN email TEXT');
 }
+// users.oidc_sub is the IdP's immutable subject identifier, used to match
+// an OIDC login to its account. NULL for users who have never signed in
+// via OIDC (local/SSO-header mode, or not yet migrated).
+if (!userColumns.includes('oidc_sub')) {
+  db.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT');
+}
 const clusterColumns = db.prepare("PRAGMA table_info(clusters)").all().map((c) => c.name);
 if (!clusterColumns.includes('rancher_url')) {
   db.exec('ALTER TABLE clusters ADD COLUMN rancher_url TEXT');
@@ -101,6 +107,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reservations_user ON reservations(user_id);
   CREATE INDEX IF NOT EXISTS idx_reservations_active ON reservations(deployment_id, released_at);
   CREATE INDEX IF NOT EXISTS idx_reservations_expiry ON reservations(released_at, expires_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub);
 `);
 
 /**

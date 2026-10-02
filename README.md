@@ -225,6 +225,13 @@ To enable OIDC, set the following environment variables:
 3. Enable **Standard Flow** (Authorization Code flow).
 4. Add `http://localhost:3000/api/auth/oidc/callback` (or your production callback URL) to the **Valid Redirect URIs** list.
 
+#### How OIDC users map to accounts:
+- Accounts are matched on the token's `sub` claim (Keycloak's immutable user ID), not on `preferred_username` or `email` — those can be changed in Keycloak, and matching on them would let whoever holds a username *now* inherit the account and role of whoever held it before.
+- On first sign-in, a new account is created with its username taken from `preferred_username` (falling back to `email`, then `sub`). That username stays fixed afterwards, even if it's later changed in Keycloak.
+- Display name and email are re-synced from the token on every sign-in.
+- An existing account that has never signed in via OIDC (e.g. one created in local or SSO-header mode before OIDC was enabled) is linked to the first OIDC identity whose username matches it, keeping its role and history.
+- If a username is already linked to a *different* Keycloak identity (e.g. the original user was deleted or renamed and someone else now has that username), sign-in is refused with `409` rather than handing over that account. An administrator has to resolve it, for example by renaming or removing the old account in the database.
+
 **Example** (Docker):
 ```bash
 docker run -p 3000:3000 \
