@@ -142,10 +142,30 @@ function releaseExpiredReservations() {
 db.releaseExpiredReservations = releaseExpiredReservations;
 
 /**
- * Seeds the database with clusters from config/clusters.json
- * Only inserts clusters/deployments that don't already exist.
+ * Seeds the database with clusters from config/clusters.json — once, on
+ * a fresh database. After that, the Admin panel owns the cluster list.
  */
 function seedFromConfig() {
+  // Seed exactly once per database. This used to run on every start with
+  // INSERT OR IGNORE, which quietly resurrected any seeded cluster or
+  // deployment an admin had deleted the next time the server restarted.
+  const alreadySeeded = db.prepare("SELECT 1 FROM settings WHERE key = 'clusters_seeded'").get();
+  if (alreadySeeded) {
+    return;
+  }
+  const markSeeded = () => db.prepare(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES ('clusters_seeded', ?)"
+  ).run(new Date().toISOString());
+
+  // A database from before this flag existed was already seeded on its
+  // first start (and seeded clusters may have been deliberately deleted
+  // since): record that, rather than seeding it again.
+  const clusterCount = db.prepare('SELECT COUNT(*) AS n FROM clusters').get().n;
+  if (clusterCount > 0) {
+    markSeeded();
+    return;
+  }
+
   const configPath = path.join(__dirname, '..', 'config', 'clusters.json');
   if (!fs.existsSync(configPath)) {
     console.warn('No clusters.json config found, skipping seed.');
@@ -153,7 +173,7 @@ function seedFromConfig() {
   }
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  
+
   const insertCluster = db.prepare(
     'INSERT OR IGNORE INTO clusters (id, name, environment) VALUES (?, ?, ?)'
   );
@@ -168,6 +188,7 @@ function seedFromConfig() {
         insertDeployment.run(deployment.id, cluster.id, deployment.name);
       }
     }
+    markSeeded();
   });
 
   seedTransaction();

@@ -16,7 +16,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
   - Users can see their own history.
 - **Release Notifications**: Optional email (SMTP) and Zulip DM to a user when someone else releases their reservation for them — configured live from the Admin panel.
 - **Rancher Shortcut Link**: Give a cluster its own Rancher URL and the dashboard shows a link straight to it.
-- **Config-Driven**: Easily define your cluster structure in `config/clusters.json`.
+- **Config-Driven**: Seed your initial cluster structure from `config/clusters.json`.
 
 ## Prerequisites
 
@@ -58,6 +58,8 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
     ```
 
     The `id` fields are used internally by the system.
+
+    This file only **seeds a fresh database, once**, on its first start. After that, the cluster list is managed from the Admin panel: deleting a cluster there is permanent, and later edits to `clusters.json` aren't picked up by an existing database. To re-seed from the file, start with an empty `data/` directory.
 
 4.  **Run the server**:
     - For production:
