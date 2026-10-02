@@ -326,6 +326,11 @@ router.get('/history', (req, res) => {
   const offset = parseInt(req.query.offset) || 0;
   const clusterId = req.query.cluster_id;
   const userId = req.query.user_id;
+  const status = req.query.status;
+
+  if (status && status !== 'active' && status !== 'released') {
+    return res.status(400).json({ error: 'status must be "active" or "released"' });
+  }
 
   let query = `
     SELECT r.*, d.name as deployment_name, c.name as cluster_name, c.environment,
@@ -346,6 +351,14 @@ router.get('/history', (req, res) => {
   if (userId) {
     conditions.push('r.user_id = ?');
     params.push(userId);
+  }
+  // Filtered here rather than in the browser so pagination and the total
+  // count reflect the filter — filtering one fetched page client-side left
+  // pages short or empty and "Page X of Y" counting unfiltered rows.
+  if (status === 'active') {
+    conditions.push('r.released_at IS NULL');
+  } else if (status === 'released') {
+    conditions.push('r.released_at IS NOT NULL');
   }
 
   if (conditions.length > 0) {

@@ -93,17 +93,11 @@ const HistoryView = {
 
     try {
       let url = `/api/admin/history?limit=${this.limit}&offset=${this.page * this.limit}`;
-      if (clusterId) url += `&cluster_id=${clusterId}`;
+      if (clusterId) url += `&cluster_id=${encodeURIComponent(clusterId)}`;
+      if (statusFilter) url += `&status=${encodeURIComponent(statusFilter)}`;
 
       const data = await App.api(url);
-      let history = data.history || [];
-
-      // Client-side status filter
-      if (statusFilter === 'active') {
-        history = history.filter(h => !h.released_at);
-      } else if (statusFilter === 'released') {
-        history = history.filter(h => h.released_at);
-      }
+      const history = data.history || [];
 
       this.total = data.total || 0;
       this.renderTable(history);
