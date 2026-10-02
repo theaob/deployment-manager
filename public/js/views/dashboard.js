@@ -207,7 +207,7 @@ const DashboardView = {
           <span class="status-dot ${statusClass}"></span>
           <span class="deployment-name" title="${this.escapeHtml(dep.name)}">${this.escapeHtml(dep.name)}</span>
           ${isReserved && dep.reservation.notes ? `
-            <button type="button" class="note-info-btn" title="${this.escapeAttr(dep.reservation.notes)}" onclick="DashboardView.openNoteModal('${dep.id}')" aria-label="View reservation note">
+            <button type="button" class="note-info-btn" title="${this.escapeHtml(dep.reservation.notes)}" onclick="DashboardView.openNoteModal('${dep.id}')" aria-label="View reservation note">
               ℹ️
             </button>
           ` : ''}
@@ -457,29 +457,7 @@ const DashboardView = {
   },
 
   escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  },
-
-  /**
-   * Escapes a string for safe use inside a double-quoted HTML attribute
-   * (e.g. title="..."). escapeHtml() above isn't enough for that: setting
-   * textContent then reading innerHTML escapes &/</> but leaves quote
-   * characters untouched (they're only special in attribute syntax, not in
-   * text content), so a note containing a `"` would otherwise break out of
-   * the attribute. Needed here because, unlike most other interpolated
-   * strings in this view, a reservation's note is arbitrary user text
-   * shown to every viewer of the dashboard — not just its author.
-   */
-  escapeAttr(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    return App.escapeHtml(str);
   },
 
   destroy() {

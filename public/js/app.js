@@ -271,11 +271,25 @@ const App = {
   },
 
   /** Escape HTML to prevent XSS */
+  /**
+   * Escapes a string for interpolation into HTML — safe both as element
+   * text and inside a quoted attribute value (title="…", value="…").
+   *
+   * Quotes must be escaped too: the previous textContent → innerHTML
+   * round-trip only escaped &, < and >, because quotes aren't special in
+   * text content. Any user-controlled string rendered into an attribute
+   * (a reservation note, a display name) could then close the attribute
+   * and inject its own — e.g. an event handler running in an admin's
+   * session. Every view's escapeHtml delegates here.
+   */
   escapeHtml(str) {
     if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   },
 
   /**
