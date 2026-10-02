@@ -240,7 +240,7 @@ docker run -p 3000:3000 \
 
 1.  Open `http://localhost:3000`.
 2.  Enter your name in the login box and click "Log in".
-3.  The first user to log in automatically becomes an admin.
+3.  The first user to log in automatically becomes an admin. Admins can promote or demote others from the Admin panel; the last remaining admin can't be demoted, so the app is never left without one.
 
 ### The Dashboard
 

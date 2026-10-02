@@ -188,6 +188,17 @@ router.put('/users/:id/role', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  // Never leave the app without an admin — there's no other way to get one
+  // back short of editing the database by hand. Safe without a transaction:
+  // better-sqlite3 is synchronous, so nothing can run between this check
+  // and the UPDATE below.
+  if (user.role === 'admin' && role !== 'admin') {
+    const adminCount = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Cannot demote the last admin. Promote another user to admin first.' });
+    }
+  }
+
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
   res.json({ message: `User role updated to ${role}` });
 });
