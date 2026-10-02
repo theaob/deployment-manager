@@ -321,7 +321,7 @@ All endpoints require authentication (via the `Authorization: Bearer <token>` HT
 | `GET` | `/api/admin/settings` | Returns the current SMTP/Zulip notification settings. Secret fields are never echoed back — only `smtp_pass_set`/`zulip_bot_api_key_set` booleans. |
 | `PUT` | `/api/admin/settings` | Updates SMTP/Zulip notification settings. Omit or send an empty secret field to keep the currently stored value. |
 | `POST` | `/api/admin/settings/test` | Sends a test notification through every enabled channel to the requesting admin's own email. |
-| `GET` | `/api/admin/history` | Gets full reservation history across all deployments. Query params: `cluster_id`, `user_id`, `limit`, `offset`. |
+| `GET` | `/api/admin/history` | Gets full reservation history across all deployments. Query params: `cluster_id`, `user_id`, `status` (`active` or `released`), `limit`, `offset`. |
 
 
 ## Releasing
