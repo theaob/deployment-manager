@@ -3,6 +3,9 @@
   "version": "1.12.1",
   "description": "Web application for managing deployments across clusters",
   "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -13,9 +16,8 @@
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^6.10.1",
-    "openid-client": "^5.6.4",
-    "uuid": "^10.0.0"
+    "nodemailer": "^10.0.13",
+    "openid-client": "^5.6.4"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

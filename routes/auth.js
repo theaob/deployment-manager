@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const db = require('../db/database');
 const { JWT_SECRET } = require('../middleware/auth');
 const { isOidcEnabled, getOidcClient, generators } = require('../middleware/oidc-auth');
@@ -104,7 +104,7 @@ router.post('/login', async (req, res) => {
     // Create new user — first user becomes admin
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
     const role = userCount === 0 ? 'admin' : 'user';
-    const id = uuidv4();
+    const id = randomUUID();
 
     db.prepare('INSERT INTO users (id, username, display_name, role) VALUES (?, ?, ?, ?)').run(
       id, cleanUsername, displayName, role
@@ -295,7 +295,7 @@ router.get('/oidc/callback', async (req, res) => {
     if (!user) {
       const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
       const role = userCount === 0 ? 'admin' : 'user';
-      const id = uuidv4();
+      const id = randomUUID();
 
       db.prepare('INSERT INTO users (id, username, display_name, email, role) VALUES (?, ?, ?, ?, ?)').run(
         id, cleanUsername, displayName, claimedEmail || null, role

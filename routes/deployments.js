@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const db = require('../db/database');
 const { sweepExpiredReservations, notifyReservationReleased } = require('../lib/notifications');
 
@@ -54,7 +54,7 @@ router.post('/:id/reserve', (req, res) => {
   }
 
   // Create reservation
-  const reservationId = uuidv4();
+  const reservationId = randomUUID();
   try {
     db.prepare(
       'INSERT INTO reservations (id, deployment_id, cluster_id, user_id, notes, expires_at) VALUES (?, ?, ?, ?, ?, ?)'

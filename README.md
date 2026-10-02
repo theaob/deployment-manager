@@ -20,7 +20,7 @@ A lightweight, self-hosted deployment reservation system for engineering teams. 
 
 ## Prerequisites
 
-- Node.js 20 or higher.
+- Node.js 22 or higher.
 - (Optional) Docker and Docker Compose for containerized deployments.
 
 ## Setup

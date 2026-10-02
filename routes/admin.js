@@ -1,5 +1,5 @@
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const db = require('../db/database');
 const { adminOnly } = require('../middleware/auth');
 const { getSettings, setSettings } = require('../lib/settings');
@@ -39,7 +39,7 @@ router.post('/clusters', (req, res) => {
     return res.status(400).json({ error: 'Name and environment are required' });
   }
 
-  const id = 'cluster-' + uuidv4().slice(0, 8);
+  const id = 'cluster-' + randomUUID().slice(0, 8);
 
   db.prepare('INSERT INTO clusters (id, name, environment) VALUES (?, ?, ?)').run(id, name, environment);
 
@@ -126,7 +126,7 @@ router.post('/clusters/:id/deployments', (req, res) => {
     return res.status(404).json({ error: 'Cluster not found' });
   }
 
-  const deploymentId = id.replace('cluster-', '') + '-deploy-' + uuidv4().slice(0, 8);
+  const deploymentId = id.replace('cluster-', '') + '-deploy-' + randomUUID().slice(0, 8);
 
   db.prepare('INSERT INTO deployments (id, cluster_id, name) VALUES (?, ?, ?)').run(deploymentId, id, name);
 
